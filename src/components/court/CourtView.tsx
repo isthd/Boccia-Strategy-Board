@@ -361,14 +361,21 @@ export function CourtView() {
         </div>
       )}
 
-      <div className="absolute bottom-2 right-2 flex flex-row gap-2">
-        <button className="zoom-btn" onClick={() => zoomBtn(1.4)} aria-label="拡大">＋</button>
-        <button className="zoom-btn" onClick={() => zoomBtn(1 / 1.4)} aria-label="縮小">－</button>
-        <button className="zoom-btn text-xs" onClick={focusJack} aria-label="ジャック周辺を拡大">J周辺</button>
-        <button className="zoom-btn text-xs" onClick={fit} aria-label="全体表示">全体</button>
+      <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-black/25 p-1 backdrop-blur-sm" role="group" aria-label="表示の拡大・縮小">
+        <button className="zoom-btn" onClick={() => zoomBtn(1.4)} aria-label="拡大" title="拡大">＋</button>
+        <button className="zoom-btn" onClick={() => zoomBtn(1 / 1.4)} aria-label="縮小" title="縮小">－</button>
+        <button className="zoom-btn text-[11px] leading-tight" onClick={focusJack} aria-label="ジャック周辺を拡大" title="ジャック周辺を拡大">J<br />周辺</button>
+        <button className="zoom-btn text-[11px] leading-tight" onClick={fit} aria-label="全体表示" title="コート全体を表示" data-testid="fit">全体</button>
       </div>
-      <div className="pointer-events-none absolute left-2 top-2 rounded bg-black/40 px-2 py-0.5 text-[11px] text-white">
-        ×{view.k.toFixed(1)}
+      <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 rounded-lg bg-slate-900/80 px-2.5 py-1 text-sm font-black tabular-nums text-white shadow" aria-label={`暫定得点 赤${score.red} 青${score.blue}`} data-testid="court-score">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bred" aria-hidden />
+          <span className="text-red-300">{score.red}</span>
+          <span className="text-slate-400">–</span>
+          <span className="text-blue-300">{score.blue}</span>
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bblue" aria-hidden />
+        </div>
+        <div className="rounded bg-black/40 px-2 py-0.5 text-[11px] text-white">×{view.k.toFixed(1)}</div>
       </div>
     </div>
   );

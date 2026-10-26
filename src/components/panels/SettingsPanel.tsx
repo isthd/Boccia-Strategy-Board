@@ -4,6 +4,7 @@ import { useUI } from '../../store/uiStore';
 import * as A from '../../store/actions';
 import { Btn, NumField, Note, Section, TextField, Toggle } from '../ui';
 import { DEFAULT_COURT } from '../../domain/geometry';
+import { PROFILE_IDS, getProfile } from '../../domain/rules/registry';
 import type { CourtConfig, Vec } from '../../domain/types';
 
 export function SettingsPanel() {
@@ -23,6 +24,16 @@ export function SettingsPanel() {
 
   return (
     <div>
+      <Section title="規則版">
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="規則版">
+          {PROFILE_IDS.map((id) => (
+            <Btn key={id} active={doc.profileId === id} variant={doc.profileId === id ? 'primary' : 'default'} onClick={() => void A.setProfile(id)} testId={`settings-profile-${id}`}>
+              {getProfile(id).shortName}
+            </Btn>
+          ))}
+        </div>
+        <Note>{profile.name}</Note>
+      </Section>
       <Section title="表示">
         <Toggle label="球の番号ラベル" checked={display.showNumbers} onChange={(v) => setDisplay({ showNumbers: v })} />
         <Toggle label="ジャックからの測定線・距離ラベル" checked={display.showDistances} onChange={(v) => setDisplay({ showDistances: v })} />

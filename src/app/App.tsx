@@ -18,7 +18,7 @@ import { CompareDialog } from '../components/dialogs/CompareDialog';
 import { HelpDialog } from '../components/dialogs/HelpDialog';
 import { useUI, type PanelTab, type Tool } from '../store/uiStore';
 import { useDocStore } from '../store/docStore';
-import { useDoc, useProfile, useScore } from '../store/derived';
+import { useDoc, useProfile } from '../store/derived';
 import * as A from '../store/actions';
 import { activeBoard } from '../domain/document';
 
@@ -86,15 +86,6 @@ function useKeyboard() {
   }, []);
 }
 
-function MiniScore() {
-  const s = useScore();
-  return (
-    <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap pl-1 pr-2 text-xs font-black tabular-nums" aria-label={`暫定 赤${s.red} 青${s.blue}`}>
-      <span className="text-red-600">赤{s.red}</span>–<span className="text-blue-600">青{s.blue}</span>
-    </span>
-  );
-}
-
 export function App() {
   useKeyboard();
   const ui = useUI();
@@ -122,14 +113,15 @@ export function App() {
           }`}
           aria-label="情報パネル"
         >
-          <div className="no-scrollbar flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-slate-200 bg-white px-1 dark:border-slate-700 dark:bg-slate-800" role="tablist">
+          <div className="flex shrink-0 items-stretch border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800" role="tablist">
             <button
-              className="flex min-h-[44px] items-center px-2 text-lg landscape:hidden"
+              className="flex min-h-[44px] w-10 shrink-0 items-center justify-center text-slate-500 hover:bg-slate-100 landscape:hidden dark:hover:bg-slate-700"
               onClick={() => ui.setPanelOpen(!ui.panelOpen)}
-              aria-label={ui.panelOpen ? 'パネルを閉じる' : 'パネルを開く'}
+              aria-label={ui.panelOpen ? 'パネルを閉じてコートを広く表示' : 'パネルを開く'}
+              title={ui.panelOpen ? 'パネルを閉じる' : 'パネルを開く'}
               aria-expanded={ui.panelOpen}
             >
-              {ui.panelOpen ? '▾' : '▴'}
+              <span className="text-lg leading-none">{ui.panelOpen ? '▾' : '▴'}</span>
             </button>
             {TABS.map((t) => (
               <button
@@ -138,13 +130,16 @@ export function App() {
                 aria-selected={ui.tab === t.id}
                 onClick={() => ui.setTab(t.id)}
                 data-testid={`tab-${t.id}`}
-                className={`min-h-[44px] shrink-0 border-b-2 px-2.5 text-sm font-bold ${ui.tab === t.id ? 'border-emerald-600 text-emerald-700 dark:text-emerald-300' : 'border-transparent text-slate-600 dark:text-slate-300'}`}
+                className={`relative min-h-[44px] min-w-0 flex-1 border-b-[3px] px-1 text-sm font-bold transition ${
+                  ui.tab === t.id && ui.panelOpen
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+                    : 'border-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
               >
                 {t.label}
-                {t.id === 'match' && doc.mode === 'match' && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />}
+                {t.id === 'match' && doc.mode === 'match' && <span className="absolute right-1 top-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500" aria-label="試合中" />}
               </button>
             ))}
-            <MiniScore />
           </div>
           {ui.panelOpen && (
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2" role="tabpanel">

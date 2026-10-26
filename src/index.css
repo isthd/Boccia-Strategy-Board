@@ -50,10 +50,10 @@ button,
 
 @layer components {
   .zoom-btn {
-    @apply flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-lg font-bold text-slate-900 shadow-lg active:bg-amber-300;
+    @apply flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-lg font-bold text-slate-900 shadow-lg ring-1 ring-black/10 hover:bg-white active:bg-amber-300;
   }
   .hdr-btn {
-    @apply min-h-[40px] rounded-md bg-slate-700 px-2.5 text-sm font-bold text-white hover:bg-slate-600;
+    @apply flex min-h-[40px] min-w-[40px] items-center justify-center gap-1 whitespace-nowrap rounded-md bg-slate-700 px-2 text-sm font-bold text-white hover:bg-slate-600 sm:px-2.5;
   }
 }
 

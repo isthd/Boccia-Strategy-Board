@@ -13,7 +13,7 @@ export function BottomBar() {
   const isMatch = doc.mode === 'match' && doc.match;
   const canRecord = isMatch && doc.match!.phase === 'color';
 
-  const btn = 'flex min-h-[48px] min-w-[64px] shrink-0 flex-col items-center justify-center rounded-lg px-2 text-[11px] font-bold leading-tight disabled:opacity-35';
+  const btn = 'flex min-h-[48px] min-w-[56px] flex-1 basis-0 flex-col items-center justify-center whitespace-nowrap rounded-lg px-1.5 text-[11px] font-bold leading-tight transition disabled:opacity-35 sm:max-w-[120px]';
   const normal = `${btn} bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-100`;
 
   return (
@@ -26,7 +26,7 @@ export function BottomBar() {
       </button>
       {isMatch && (
         <button className={`${btn} bg-emerald-600 text-white`} onClick={() => ui.openDialog('recordThrow')} disabled={!canRecord} data-testid="bottom-record">
-          <span className="text-base">⏵</span>1投記録
+          <span className="text-base">⏵</span>1投を記録
         </button>
       )}
       <button className={normal} onClick={() => A.saveVariant(false)} data-testid="save-variant">
@@ -46,13 +46,16 @@ export function BottomBar() {
           }}
           data-testid="bottom-compare"
         >
-          <span className="text-base">⇆</span>比較
+          <span className="text-base">⇆</span>A/B比較
         </button>
       )}
-      <button className={normal} onClick={() => ui.setView({ k: 1, tx: 0, ty: 0 })} data-testid="fit">
-        <span className="text-base">⤢</span>全体表示
-      </button>
-      <button className={normal} onClick={() => void A.resetBoard()} data-testid="reset">
+      <div className="ml-auto w-px shrink-0 self-stretch bg-slate-200 dark:bg-slate-600" aria-hidden />
+      <button
+        className={`${btn} bg-white text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-300 dark:ring-rose-800 dark:hover:bg-rose-900/30`}
+        onClick={() => void A.resetBoard()}
+        data-testid="reset"
+        title={isMatch ? '記録前に置いた球を取り消します' : '盤面の球と作図をすべて消します（確認あり）'}
+      >
         <span className="text-base">⟲</span>{isMatch ? '仮置き取消' : '初期化'}
       </button>
     </nav>
