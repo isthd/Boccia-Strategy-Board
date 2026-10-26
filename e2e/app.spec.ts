@@ -145,6 +145,7 @@ test('局面の分岐とA/B比較、作図（目標点・矢印）', async ({ pa
   await tapAt(page, 3.4, 5);
   await page.getByTestId('tool-target').tap();
   await tapAt(page, 3.1, 5.2);
+  await page.getByTestId('fit').click(); // 既定は×2.0なので、ボックスが見えるよう全体表示に
   await page.getByTestId('tool-arrow').tap();
   await tapAt(page, 2.5, 11.2); // ボックス3 → 中心にスナップ
   await tapAt(page, 3.1, 5.2);
@@ -222,4 +223,19 @@ test('規則版の切替：フレンドリー版はファイナルショット',
   await page.getByTestId('match-start').click();
   await expect(page.getByTestId('tab-match')).toBeVisible();
   await expect(page.getByTestId('clock-red')).toHaveText('4:00');
+});
+
+test('既定ズームは×2.0、×1.0以下では球の拡大小窓を表示', async ({ page }) => {
+  await freshStart(page);
+  await expect(page.getByTestId('court')).toContainText('×2.0');
+  await expect(page.getByTestId('court-inset')).toHaveCount(0);
+  await page.getByTestId('tool-jack').tap();
+  await tapAt(page, 3, 5);
+  await page.getByTestId('tool-red').tap();
+  await tapAt(page, 3.3, 5.1);
+  await page.getByTestId('fit').click();
+  await expect(page.getByTestId('court')).toContainText('×1.0');
+  await expect(page.getByTestId('court-inset')).toBeVisible();
+  await page.getByTestId('court-inset').click();
+  await expect(page.getByTestId('court-inset')).toHaveCount(0);
 });

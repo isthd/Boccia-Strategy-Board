@@ -1,6 +1,7 @@
 // 画面状態（Undo対象外）。表示設定は端末ごとの利便設定として localStorage に保存。
 import { create } from 'zustand';
-import type { Side, Vec } from '../domain/types';
+import type { CourtConfig, Side, Vec } from '../domain/types';
+import { DEFAULT_COURT } from '../domain/geometry';
 
 export type Tool = 'select' | 'jack' | 'red' | 'blue' | 'delete' | 'arrow' | 'target' | 'measure' | 'text';
 
@@ -46,6 +47,14 @@ export interface ViewTransform {
   k: number;
   tx: number;
   ty: number;
+}
+
+/** 起動時のズーム倍率 */
+export const DEFAULT_ZOOM = 2;
+
+/** 点 c を画面中央に置いた倍率 k の表示変換（コート中心がビューボックス中心） */
+export function viewCenteredOn(court: Pick<CourtConfig, 'width' | 'length'>, c: Vec, k: number): ViewTransform {
+  return { k, tx: court.width / 2 - k * c.x, ty: court.length / 2 - k * c.y };
 }
 
 export type PanelTab = 'info' | 'balls' | 'tactics' | 'variants' | 'match' | 'settings';
@@ -136,7 +145,7 @@ let toastSeq = 1;
 export const useUI = create<UIState>((set, get) => ({
   tool: 'select',
   selectedId: null,
-  view: { k: 1, tx: 0, ty: 0 },
+  view: viewCenteredOn(DEFAULT_COURT, DEFAULT_COURT.cross, DEFAULT_ZOOM),
   display: loadDisplay(),
   measure: [],
   arrowStart: null,

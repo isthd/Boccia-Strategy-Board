@@ -1,7 +1,7 @@
 // 操作可能なコート表示。Pointer Events でタップ追加・1本指ドラッグ・ピンチズーム・パンを扱う。
 // 画面座標はズーム・パンの表示変換にのみ使い、球の座標は常にメートル単位で保持する。
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useUI, type ViewTransform } from '../../store/uiStore';
+import { useUI, viewCenteredOn, type ViewTransform } from '../../store/uiStore';
 import { useBoard, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
 import { useDocStore } from '../../store/docStore';
 import * as A from '../../store/actions';
@@ -15,6 +15,23 @@ const MARGIN = 0.6;
 const MIN_K = 0.6;
 const MAX_K = 40;
 const TAP_SLOP = 8; // px
+/** この倍率以下のとき、球まわりの拡大小窓を出す */
+const INSET_MAX_K = 1.0;
+/** 小窓に入れる、ジャックからの距離の上限(m) */
+const INSET_NEAR = 1.5;
+
+/** 小窓に写す範囲（正方形、ワールドm）。表示する球がなければ null */
+function insetRegion(balls: Ball[]): { cx: number; cy: number; half: number } | null {
+  const live = balls.filter((b) => b.status === 'inPlay');
+  if (live.length === 0) return null;
+  const jack = live.find((b) => b.kind === 'jack');
+  const pts = jack ? live.filter((b) => distance(b, jack) <= INSET_NEAR) : live;
+  const xs = pts.map((b) => b.x);
+  const ys = pts.map((b) => b.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const half = Math.max((x1 - x0) / 2, (y1 - y0) / 2) + 0.25;
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half: Math.max(half, 0.5) };
+}
 
 type Gesture =
   | { kind: 'none' }
@@ -305,13 +322,20 @@ export function CourtView() {
   const focusJack = () => {
     const j = board.balls.find((b) => b.kind === 'jack' && b.status !== 'available');
     const c = j ?? court.cross;
-    const k = 4.5;
-    ui.setView({ k, tx: vb.x + vb.w / 2 - k * c.x, ty: vb.y + vb.h / 2 - k * c.y });
+    ui.setView(viewCenteredOn(court, c, 4.5));
   };
   const zoomBtn = (f: number) => zoomAt(size.w / 2, size.h / 2, view.k * f);
 
   const overlapIds = useMemo(() => new Set(overlaps.flat()), [overlaps]);
   const showTargetBox = display.showTargetBox ?? profile.showTargetBox;
+
+  const inset = view.k <= INSET_MAX_K ? insetRegion(board.balls) : null;
+  const insetSide = Math.round(clamp(Math.min(size.w, size.h) * 0.36, 110, 220));
+  const focusInset = () => {
+    if (!inset) return;
+    const k = clamp(Math.min(vb.w, vb.h) / (inset.half * 2 * 1.4), 2, MAX_K);
+    ui.setView(viewCenteredOn(court, { x: inset.cx, y: inset.cy }, k));
+  };
 
   const cursor = tool === 'select' ? 'default' : tool === 'delete' ? 'not-allowed' : 'crosshair';
 
@@ -359,6 +383,39 @@ export function CourtView() {
         <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1 text-sm font-bold text-black shadow">
           投球履歴の再生中（閲覧のみ）
         </div>
+      )}
+
+      {inset && (
+        <button
+          type="button"
+          onClick={focusInset}
+          className="absolute bottom-2 left-2 overflow-hidden rounded-lg border-2 border-amber-300 bg-slate-700 shadow-xl"
+          style={{ width: insetSide, height: insetSide }}
+          aria-label="球の周辺の拡大表示（タップでこの範囲を拡大）"
+          title="タップでこの範囲を拡大"
+          data-testid="court-inset"
+        >
+          <svg className="pointer-events-none h-full w-full" viewBox={`${inset.cx - inset.half} ${inset.cy - inset.half} ${inset.half * 2} ${inset.half * 2}`} aria-hidden>
+            <CourtContent
+              court={court}
+              board={board}
+              pxPerM={insetSide / (inset.half * 2)}
+              showTargetBox={showTargetBox}
+              showNumbers={display.showNumbers}
+              showGrid={display.showGrid}
+              ballOpacity={display.ballOpacity}
+              showDistances={display.showDistances}
+              showHalo={display.showHalo}
+              showContacts={display.showContacts}
+              showInvalidArea={display.showInvalidArea}
+              selectedId={ui.selectedId}
+              pendingId={doc.match?.pendingBallId ?? null}
+              score={score}
+              overlapIds={overlapIds}
+            />
+          </svg>
+          <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 px-1.5 text-[10px] font-bold text-white">拡大</span>
+        </button>
       )}
 
       <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-black/25 p-1 backdrop-blur-sm" role="group" aria-label="表示の拡大・縮小">
