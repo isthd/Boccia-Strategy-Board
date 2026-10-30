@@ -80,8 +80,8 @@ export function MatchSetupDialog() {
         )}
         <div className="flex flex-wrap gap-3">
           <NumField label="エンド数" value={setup.numEnds} min={1} max={20} width="w-16" onCommit={(v) => setSetup({ ...setup, numEnds: Math.round(v) })} />
-          <NumField label="赤 持ち時間" unit="秒" value={setup.timeSec.red} min={0} max={7200} width="w-20" onCommit={(v) => setSetup({ ...setup, timeSec: { ...setup.timeSec, red: v } })} />
-          <NumField label="青 持ち時間" unit="秒" value={setup.timeSec.blue} min={0} max={7200} width="w-20" onCommit={(v) => setSetup({ ...setup, timeSec: { ...setup.timeSec, blue: v } })} />
+          <NumField label="赤 持ち時間" unit="分" step={0.5} value={setup.timeSec.red / 60} min={0} max={120} width="w-20" onCommit={(v) => setSetup({ ...setup, timeSec: { ...setup.timeSec, red: Math.round(v * 60) } })} />
+          <NumField label="青 持ち時間" unit="分" step={0.5} value={setup.timeSec.blue / 60} min={0} max={120} width="w-20" onCommit={(v) => setSetup({ ...setup, timeSec: { ...setup.timeSec, blue: Math.round(v * 60) } })} />
         </div>
         {mt.endsProvisional && <Note kind="warn">エンド数の初期値（個人・ペア4、チーム6）は通常版からの初期提案です。フレンドリー版の確定規則ではないため、大会の申し合わせを確認してください。</Note>}
         <Note>{profile.timeNote}</Note>
