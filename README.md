@@ -2,6 +2,8 @@
 
 Webブラウザで動くボッチャの盤面再現・暫定得点・戦術検討アプリです。iPad Safari のタッチ操作を最優先に設計しています。
 
+**アプリを開く：https://isthd.github.io/Boccia-Strategy-Board/**
+
 ---
 
 ## 使い方
