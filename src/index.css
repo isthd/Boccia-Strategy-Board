@@ -61,3 +61,50 @@ button,
   outline: 3px solid #f59e0b;
   outline-offset: 2px;
 }
+
+/* 審判パドル：下から掲げるように出し、判定が変わると裏返す */
+@keyframes paddle-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) rotate(-18deg);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-4px) rotate(5deg);
+  }
+  80% {
+    transform: translateY(1px) rotate(-2deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+.paddle-pop {
+  transform-origin: 50% 100%;
+  animation: paddle-pop 0.45s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.paddle-3d {
+  perspective: 500px;
+}
+.paddle-flip {
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.3, 0.7, 0.35, 1.15);
+}
+.paddle-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.paddle-shadow {
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45));
+}
+.paddle-caption {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  .paddle-pop {
+    animation: none;
+  }
+  .paddle-flip {
+    transition: none;
+  }
+}

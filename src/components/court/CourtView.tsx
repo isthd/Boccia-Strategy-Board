@@ -2,10 +2,11 @@
 // 画面座標はズーム・パンの表示変換にのみ使い、球の座標は常にメートル単位で保持する。
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUI, viewCenteredOn, type ViewTransform } from '../../store/uiStore';
-import { useBoard, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
+import { useBoard, useDecision, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
 import { useDocStore } from '../../store/docStore';
 import * as A from '../../store/actions';
 import { CourtContent } from './CourtContent';
+import { RefereePaddle } from './RefereePaddle';
 import type { Ball, Vec } from '../../domain/types';
 import { boxAt, boxCenter, closestPointOnSegment, distance } from '../../domain/geometry';
 import { newId } from '../../domain/document';
@@ -50,6 +51,9 @@ export function CourtView() {
   const profile = useProfile();
   const score = useScore();
   const overlaps = useOverlaps();
+  const decision = useDecision();
+  const endScoring = doc.mode === 'match' && doc.match?.phase === 'endScoring' && !preview;
+  const paddleNext = !preview && decision && !decision.endComplete ? decision.side : null;
   const ui = useUI();
   const { view, display, tool } = ui;
 
@@ -434,6 +438,7 @@ export function CourtView() {
         </div>
         <div className="rounded bg-black/40 px-2 py-0.5 text-[11px] text-white">×{view.k.toFixed(1)}</div>
       </div>
+      <RefereePaddle score={score} scoring={endScoring} nextSide={paddleNext} />
     </div>
   );
 }
