@@ -10,7 +10,6 @@ import { RefereePaddle } from './RefereePaddle';
 import { ViewModeToggle } from './ViewModeToggle';
 import { hitAnnotationAt, hitBallAt, handleCourtTap } from './courtInteraction';
 import type { Ball, Vec } from '../../domain/types';
-import { distance } from '../../domain/geometry';
 import { hitHandBall } from '../../domain/hand';
 
 const Court3D = lazy(() => import('./Court3D'));
@@ -20,23 +19,6 @@ const MARGIN = 0.6;
 const MIN_K = 0.6;
 const MAX_K = 40;
 const TAP_SLOP = 8; // px
-/** この倍率以下のとき、球まわりの拡大小窓を出す */
-const INSET_MAX_K = 1.0;
-/** 小窓に入れる、ジャックからの距離の上限(m) */
-const INSET_NEAR = 1.5;
-
-/** 小窓に写す範囲（正方形、ワールドm）。表示する球がなければ null */
-function insetRegion(balls: Ball[]): { cx: number; cy: number; half: number } | null {
-  const live = balls.filter((b) => b.status === 'inPlay');
-  if (live.length === 0) return null;
-  const jack = live.find((b) => b.kind === 'jack');
-  const pts = jack ? live.filter((b) => distance(b, jack) <= INSET_NEAR) : live;
-  const xs = pts.map((b) => b.x);
-  const ys = pts.map((b) => b.y);
-  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const half = Math.max((x1 - x0) / 2, (y1 - y0) / 2) + 0.25;
-  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half: Math.max(half, 0.5) };
-}
 
 type Gesture =
   | { kind: 'none' }
@@ -316,14 +298,6 @@ function Court2D() {
   const overlapIds = useMemo(() => new Set(overlaps.flat()), [overlaps]);
   const showTargetBox = display.showTargetBox ?? profile.showTargetBox;
 
-  const inset = view.k <= INSET_MAX_K ? insetRegion(board.balls) : null;
-  const insetSide = Math.round(clamp(Math.min(size.w, size.h) * 0.36, 110, 220));
-  const focusInset = () => {
-    if (!inset) return;
-    const k = clamp(Math.min(vb.w, vb.h) / (inset.half * 2 * 1.4), 2, MAX_K);
-    ui.setView(viewCenteredOn(court, { x: inset.cx, y: inset.cy }, k));
-  };
-
   const cursor = tool === 'select' ? 'default' : tool === 'delete' ? 'not-allowed' : 'crosshair';
 
   return (
@@ -366,39 +340,6 @@ function Court2D() {
           />
         </g>
       </svg>
-
-      {inset && (
-        <button
-          type="button"
-          onClick={focusInset}
-          className="absolute bottom-2 left-2 overflow-hidden rounded-lg border-2 border-amber-300 bg-slate-700 shadow-xl"
-          style={{ width: insetSide, height: insetSide }}
-          aria-label="球の周辺の拡大表示（タップでこの範囲を拡大）"
-          title="タップでこの範囲を拡大"
-          data-testid="court-inset"
-        >
-          <svg className="pointer-events-none h-full w-full" viewBox={`${inset.cx - inset.half} ${inset.cy - inset.half} ${inset.half * 2} ${inset.half * 2}`} aria-hidden>
-            <CourtContent
-              court={court}
-              board={board}
-              pxPerM={insetSide / (inset.half * 2)}
-              showTargetBox={showTargetBox}
-              showNumbers={display.showNumbers}
-              showGrid={display.showGrid}
-              ballOpacity={display.ballOpacity}
-              showDistances={display.showDistances}
-              showHalo={display.showHalo}
-              showContacts={display.showContacts}
-              showInvalidArea={display.showInvalidArea}
-              selectedId={ui.selectedId}
-              pendingId={doc.match?.pendingBallId ?? null}
-              score={score}
-              overlapIds={overlapIds}
-            />
-          </svg>
-          <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 px-1.5 text-[10px] font-bold text-white">拡大</span>
-        </button>
-      )}
 
       <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-black/25 p-1 backdrop-blur-sm" role="group" aria-label="表示の拡大・縮小">
         <button className="zoom-btn" onClick={() => zoomBtn(1.4)} aria-label="拡大" title="拡大">＋</button>

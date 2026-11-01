@@ -295,6 +295,7 @@ export default function Court3D() {
         measure={tool === 'measure' ? ui.measure : undefined}
         arrowStart={tool === 'arrow' ? ui.arrowStart?.p ?? null : null}
         ballBodies={false}
+        minBallPx={0}
       />,
     );
     const vw = court.width + 2 * MARGIN;

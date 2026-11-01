@@ -53,7 +53,14 @@ export interface CourtContentProps {
   ballBodies?: boolean;
   /** 試合再現：ボックスに並べる手持ちの球 */
   hand?: HandBall[];
+  /** 球を画面上でこの半径(px)より小さく描かない（引いた表示でも見えるように）。0 なら実寸 */
+  minBallPx?: number;
 }
+
+/** 球の見た目の最小半径(px)。距離・得点の計算は実寸のまま */
+const MIN_BALL_PX = 9;
+/** ボックスに並べた手持ち球は隣と重ならない大きさまで（並べる間隔0.14mの半分弱） */
+const MAX_HAND_R = 0.065;
 
 const ballFill = (b: Ball) => (b.kind === 'jack' ? PALETTE.jack : b.side === 'red' ? PALETTE.red : PALETTE.blue);
 const ballStroke = (b: Ball) => (b.kind === 'jack' ? PALETTE.jackStroke : b.side === 'red' ? PALETTE.redStroke : PALETTE.blueStroke);
@@ -204,6 +211,7 @@ function AnnotationShapes({ annotations, px, balls, showContacts, selectedId }: 
 
 export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
   const px = (n: number) => n / p.pxPerM;
+  const minPx = p.minBallPx ?? MIN_BALL_PX;
   const { board, court, score } = p;
   const jack = board.balls.find((b) => b.kind === 'jack');
   const onCourt = board.balls.filter((b) => b.status !== 'available');
@@ -224,18 +232,21 @@ export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
 
       {p.hand && p.ballBodies !== false && p.hand.length > 0 && (
         <g data-testid="hand-balls">
-          {p.hand.map((h) => (
-            <circle
-              key={`h-${h.ball.id}`}
-              data-hand-ball-id={h.ball.id}
-              cx={h.x}
-              cy={h.y}
-              r={h.ball.radius}
-              fill={ballFill(h.ball)}
-              stroke={ballStroke(h.ball)}
-              strokeWidth={Math.min(px(1.2), h.ball.radius * 0.2)}
-            />
-          ))}
+          {p.hand.map((h) => {
+            const r = Math.max(h.ball.radius, Math.min(px(minPx), MAX_HAND_R));
+            return (
+              <circle
+                key={`h-${h.ball.id}`}
+                data-hand-ball-id={h.ball.id}
+                cx={h.x}
+                cy={h.y}
+                r={r}
+                fill={ballFill(h.ball)}
+                stroke={ballStroke(h.ball)}
+                strokeWidth={Math.min(px(1.2), r * 0.2)}
+              />
+            );
+          })}
         </g>
       )}
 
@@ -266,46 +277,47 @@ export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
         const sel = p.selectedId === b.id;
         const overlap = p.overlapIds?.has(b.id);
         const warnJack = b.kind === 'jack' && b.status === 'inPlay' && jackStatus !== 'valid';
-        const haloR = Math.max(b.radius * 1.6, px(9));
+        const r = Math.max(b.radius, px(minPx));
+        const haloR = Math.max(r * 1.6, px(9));
         return (
           <g key={b.id} opacity={inactive ? 0.4 : 1} data-ball-id={b.id}>
-            {p.showHalo && !inactive && haloR > b.radius * 1.5 && (
+            {p.showHalo && !inactive && haloR > r * 1.5 && (
               <circle cx={b.x} cy={b.y} r={haloR} fill="none" stroke={ballFill(b) === PALETTE.jack ? '#ffffff' : ballFill(b)} strokeOpacity={0.55} strokeWidth={px(1.5)} />
             )}
-            {sel && <circle cx={b.x} cy={b.y} r={b.radius + px(6)} fill="none" stroke={PALETTE.select} strokeWidth={px(3)} />}
-            {b.id === p.pendingId && <circle cx={b.x} cy={b.y} r={b.radius + px(10)} fill="none" stroke="#a3e635" strokeWidth={px(2)} strokeDasharray={`${px(4)} ${px(3)}`} />}
+            {sel && <circle cx={b.x} cy={b.y} r={r + px(6)} fill="none" stroke={PALETTE.select} strokeWidth={px(3)} />}
+            {b.id === p.pendingId && <circle cx={b.x} cy={b.y} r={r + px(10)} fill="none" stroke="#a3e635" strokeWidth={px(2)} strokeDasharray={`${px(4)} ${px(3)}`} />}
             {(outside || warnJack) && !inactive && (
-              <circle cx={b.x} cy={b.y} r={b.radius + px(4)} fill="none" stroke={PALETTE.danger} strokeWidth={px(2.5)} />
+              <circle cx={b.x} cy={b.y} r={r + px(4)} fill="none" stroke={PALETTE.danger} strokeWidth={px(2.5)} />
             )}
-            {overlap && !inactive && <circle cx={b.x} cy={b.y} r={b.radius + px(2.5)} fill="none" stroke={PALETTE.warn} strokeWidth={px(2)} />}
-            {boundary.has(b.id) && <circle cx={b.x} cy={b.y} r={b.radius + px(8)} fill="none" stroke={PALETTE.warn} strokeWidth={px(1.5)} strokeDasharray={`${px(2)} ${px(2)}`} />}
+            {overlap && !inactive && <circle cx={b.x} cy={b.y} r={r + px(2.5)} fill="none" stroke={PALETTE.warn} strokeWidth={px(2)} />}
+            {boundary.has(b.id) && <circle cx={b.x} cy={b.y} r={r + px(8)} fill="none" stroke={PALETTE.warn} strokeWidth={px(1.5)} strokeDasharray={`${px(2)} ${px(2)}`} />}
             {p.ballBodies === false ? (
-              scoring.has(b.id) && <circle cx={b.x} cy={b.y} r={b.radius + px(3)} fill="none" stroke="#fff" strokeWidth={px(2.5)} />
+              scoring.has(b.id) && <circle cx={b.x} cy={b.y} r={r + px(3)} fill="none" stroke="#fff" strokeWidth={px(2.5)} />
             ) : (
             <>
             <circle
               cx={b.x}
               cy={b.y}
-              r={b.radius}
+              r={r}
               fill={ballFill(b)}
               fillOpacity={p.ballOpacity}
               stroke={ballStroke(b)}
-              strokeWidth={Math.min(px(1.2), b.radius * 0.2)}
-              strokeDasharray={inactive ? `${b.radius * 0.3} ${b.radius * 0.2}` : undefined}
+              strokeWidth={Math.min(px(1.2), r * 0.2)}
+              strokeDasharray={inactive ? `${r * 0.3} ${r * 0.2}` : undefined}
             />
-            {scoring.has(b.id) && <circle cx={b.x} cy={b.y} r={b.radius * 0.28} fill="#fff" fillOpacity={0.9} />}
+            {scoring.has(b.id) && <circle cx={b.x} cy={b.y} r={r * 0.28} fill="#fff" fillOpacity={0.9} />}
             {inactive && (
-              <g stroke="#111" strokeWidth={Math.min(px(1.5), b.radius * 0.25)}>
-                <line x1={b.x - b.radius * 0.6} y1={b.y - b.radius * 0.6} x2={b.x + b.radius * 0.6} y2={b.y + b.radius * 0.6} />
-                <line x1={b.x + b.radius * 0.6} y1={b.y - b.radius * 0.6} x2={b.x - b.radius * 0.6} y2={b.y + b.radius * 0.6} />
+              <g stroke="#111" strokeWidth={Math.min(px(1.5), r * 0.25)}>
+                <line x1={b.x - r * 0.6} y1={b.y - r * 0.6} x2={b.x + r * 0.6} y2={b.y + r * 0.6} />
+                <line x1={b.x + r * 0.6} y1={b.y - r * 0.6} x2={b.x - r * 0.6} y2={b.y + r * 0.6} />
               </g>
             )}
             </>
             )}
             {p.showNumbers && (
               <text
-                x={b.x + Math.max(b.radius, px(9)) + px(2)}
-                y={b.y - Math.max(b.radius, px(6))}
+                x={b.x + Math.max(r, px(9)) + px(2)}
+                y={b.y - Math.max(r, px(6))}
                 fontSize={labelFs}
                 fill={b.kind === 'jack' ? '#111827' : ballFill(b)}
                 stroke="#fff"

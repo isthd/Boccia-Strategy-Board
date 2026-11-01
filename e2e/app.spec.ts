@@ -225,19 +225,16 @@ test('規則版の切替：フレンドリー版はファイナルショット',
   await expect(page.getByTestId('clock-red')).toHaveText('4:00');
 });
 
-test('既定ズームは×2.0、×1.0以下では球の拡大小窓を表示', async ({ page }) => {
+test('既定ズームは×2.0、全体表示でも球が見える大きさで描かれ、拡大小窓は出ない', async ({ page }) => {
   await freshStart(page);
   await expect(page.getByTestId('court')).toContainText('×2.0');
-  await expect(page.getByTestId('court-inset')).toHaveCount(0);
   await page.getByTestId('tool-jack').tap();
   await tapAt(page, 3, 5);
-  await page.getByTestId('tool-red').tap();
-  await tapAt(page, 3.3, 5.1);
   await page.getByTestId('fit').click();
   await expect(page.getByTestId('court')).toContainText('×1.0');
-  await expect(page.getByTestId('court-inset')).toBeVisible();
-  await page.getByTestId('court-inset').click();
   await expect(page.getByTestId('court-inset')).toHaveCount(0);
+  const box = await page.locator('[data-ball-id="jack"] circle').last().boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(17);
 });
 
 test('2D／3D表示の切替（3Dでもタップで球を追加でき、設定はリロード後も残る）', async ({ page }) => {
