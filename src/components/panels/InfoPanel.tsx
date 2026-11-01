@@ -11,6 +11,7 @@ import { ballLabel } from '../../domain/document';
 import { sandboxHint } from '../../domain/turn-engine';
 import { sideLabel, type Side } from '../../domain/types';
 import * as M from '../../domain/match';
+import { sandboxLayoutOf, type SandboxLayout } from '../../domain/hand';
 
 export function ScoreCard() {
   const score = useScore();
@@ -78,6 +79,7 @@ export function InfoPanel() {
     <div>
       <ScoreCard />
       <div className="h-3" />
+      {doc.mode === 'sandbox' && <SandboxLayoutSection />}
       <Section title="得点の根拠" testId="score-breakdown">
         <p className="mb-2 text-xs text-slate-600 dark:text-slate-300">{describeScore(score)}</p>
         {score.ranking.length === 0 ? (
@@ -220,5 +222,37 @@ export function InfoPanel() {
         </p>
       )}
     </div>
+  );
+}
+
+/** 自由配置：試合形式を選ぶと、手持ちの球を各選手のスローイングボックスに並べる */
+function SandboxLayoutSection() {
+  const doc = useDoc();
+  const profile = useProfile();
+  const { board, preview } = useBoard();
+  const layout = sandboxLayoutOf(board, doc.matchType);
+  const opts: [SandboxLayout, string][] = [
+    [null, '指定なし'],
+    ['individual', '個人戦'],
+    ['pair', 'ペア戦'],
+    ['team', 'チーム戦'],
+  ];
+  const desc = (() => {
+    if (!layout) return '球をボックスに並べません。球ツールでコートをタップして置きます。';
+    const mt = profile.matchTypes[layout];
+    const boxes = [...mt.redBoxes, ...mt.blueBoxes].sort((a, b) => a - b).join('・');
+    return `${boxes}番のボックスに1人${mt.ballsPerPlayer}球ずつ並べます。ボックスの球をコートまでドラッグすると置けます（ジャックは${mt.jackRotationBoxes[0]}番）。`;
+  })();
+  return (
+    <Section title="試合形式（ボックスの球）" testId="sandbox-layout">
+      <div className="grid grid-cols-4 gap-1.5">
+        {opts.map(([v, l]) => (
+          <Btn key={l} small active={layout === v} disabled={preview} onClick={() => A.setSandboxLayout(v)} testId={`layout-${v ?? 'none'}`}>
+            {l}
+          </Btn>
+        ))}
+      </div>
+      <Note>{desc}</Note>
+    </Section>
   );
 }

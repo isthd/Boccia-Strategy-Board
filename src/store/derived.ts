@@ -8,7 +8,7 @@ import { getProfile } from '../domain/rules/registry';
 import { findOverlaps } from '../domain/geometry';
 import type { Board } from '../domain/types';
 import * as M from '../domain/match';
-import { handBalls, type HandBall } from '../domain/hand';
+import { handBalls, sandboxLayoutOf, type HandBall } from '../domain/hand';
 
 export function useDoc() {
   return useDocStore((s) => s.doc)!;
@@ -60,7 +60,12 @@ export function useHand(): HandBall[] {
   const profile = useProfile();
   const { board, preview } = useBoard();
   return useMemo(() => {
-    if (doc.mode !== 'match' || !doc.match) return [];
+    if (doc.mode !== 'match' || !doc.match) {
+      // 自由配置：試合形式を選んでいれば、ジャックは第1エンドの担当ボックスに置く
+      const layout = sandboxLayoutOf(board, doc.matchType);
+      if (!layout) return [];
+      return handBalls(board.balls, doc.court, profile.matchTypes[layout].jackRotationBoxes[0] ?? null);
+    }
     const m = doc.match;
     const jackBox = !preview && m.phase === 'jack' ? M.currentJackThrower(m, profile).box : null;
     return handBalls(board.balls, doc.court, jackBox ?? null);

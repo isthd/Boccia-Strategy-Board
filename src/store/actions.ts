@@ -5,11 +5,12 @@ import { useUI } from './uiStore';
 import type { BoardDoc } from '../domain/document';
 import { activeBoard, activeVariant, ballLabel, cloneBoard, createSandboxDoc, emptyBoard, makeColorBall, newId, newVariant, nowIso } from '../domain/document';
 import type { Annotation, Ball, BallStatus, Board, RuleProfileId, Side, TieResolution, Vec } from '../domain/types';
-import { sideLabel } from '../domain/types';
+import { MATCH_TYPE_LABEL, sideLabel } from '../domain/types';
 import { resolveOverlap } from '../domain/geometry';
 import { roundTo } from '../domain/numeric';
 import * as M from '../domain/match';
 import { getProfile } from '../domain/rules/registry';
+import { assignBoxes, sandboxLayoutOf, type SandboxLayout } from '../domain/hand';
 
 const doc = () => useDocStore.getState().doc!;
 const apply = (label: string, fn: (d: Draft<BoardDoc>) => void) => useDocStore.getState().apply(label, fn);
@@ -140,7 +141,7 @@ function putPending(cand: Ball, p: Vec): string {
 export function placeHandBall(ballId: string, p: Vec): string | null {
   const d = doc();
   const m = d.match;
-  if (d.mode !== 'match' || !m) return null;
+  if (d.mode !== 'match' || !m) return placeSandboxHandBall(ballId, p);
   const ball = m.board.balls.find((b) => b.id === ballId);
   if (!ball || ball.status !== 'available') return null;
   if (ball.kind === 'jack') return addMatchBallAt('jack', p);
@@ -156,6 +157,31 @@ export function placeHandBall(ballId: string, p: Vec): string | null {
     return null;
   }
   return putPending(ball, p);
+}
+
+function placeSandboxHandBall(ballId: string, p: Vec): string | null {
+  const board = activeBoard(doc());
+  const ball = board.balls.find((b) => b.id === ballId);
+  if (!ball || ball.status !== 'available') return null;
+  const pos = round(snapPos(board, ball.id, p, ball.radius));
+  apply(`${ballLabel(ball)}を配置`, (dd) => {
+    const b = boardOf(dd).balls.find((x) => x.id === ballId)!;
+    b.x = pos.x;
+    b.y = pos.y;
+    b.status = 'inPlay';
+  });
+  return ball.id;
+}
+
+/** 自由配置：試合形式（個人・ペア・チーム）を選び、手持ちの球を各選手のボックスに振り分ける。全局面に反映 */
+export function setSandboxLayout(layout: SandboxLayout) {
+  const d = doc();
+  if (d.mode !== 'sandbox') return;
+  const profile = getProfile(d.profileId);
+  apply(layout ? `試合形式を${MATCH_TYPE_LABEL[layout]}に変更` : '試合形式を指定なしに変更', (dd) => {
+    if (layout) dd.matchType = layout;
+    for (const v of dd.variants) assignBoxes(v.board.balls as Ball[], profile, layout);
+  });
 }
 
 /** ドラッグ中の位置更新（履歴は endGesture で1回だけ積む） */
@@ -280,9 +306,13 @@ export async function resetBoard(): Promise<void> {
     });
     return;
   }
+  // 試合形式（ボックスの割り当て）は初期化しても引き継ぐ
+  const layout = d.mode === 'sandbox' ? sandboxLayoutOf(activeBoard(d), d.matchType) : null;
   apply('盤面を初期化', (dd) => {
     const v = dd.variants.find((x) => x.id === dd.activeVariantId)!;
-    v.board = emptyBoard() as Draft<Board>;
+    const nb = emptyBoard();
+    assignBoxes(nb.balls, getProfile(d.profileId), layout);
+    v.board = nb as Draft<Board>;
   });
   useUI.getState().select(null);
 }

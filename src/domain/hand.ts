@@ -1,5 +1,6 @@
-// 試合再現で、まだ投げていない球（手持ち）をスローイングボックスの中に並べて見せるための配置計算。
-import type { Ball, CourtConfig, Vec } from './types';
+// まだ投げていない球（手持ち）をスローイングボックスの中に並べて見せるための配置計算（試合再現・自由配置の両方で使う）。
+import type { Ball, Board, CourtConfig, MatchType, Vec } from './types';
+import type { RuleProfile } from './rules/profile';
 
 export interface HandBall extends Vec {
   ball: Ball;
@@ -58,4 +59,30 @@ export function hitHandBall(hand: HandBall[], p: Vec, r: number): HandBall | nul
     }
   }
   return best;
+}
+
+/** 自由配置のボックス割り当て。null は「指定なし」（ボックスに並べない） */
+export type SandboxLayout = MatchType | null;
+
+/** 盤面の球にボックス番号が付いていれば、その試合形式で並べている */
+export function sandboxLayoutOf(board: Board, matchType: MatchType): SandboxLayout {
+  return board.balls.some((b) => b.kind === 'color' && b.playerBox != null) ? matchType : null;
+}
+
+/**
+ * 自由配置の球に、試合形式どおりのボックス番号を付け直す（番号の小さい球から順に各選手へ）。
+ * 非公式の追加球と規定数を超える球にはボックスを付けない。layout が null なら全部外す。
+ */
+export function assignBoxes(balls: Ball[], profile: RuleProfile, layout: SandboxLayout): void {
+  for (const b of balls) delete b.playerBox;
+  if (!layout) return;
+  const mt = profile.matchTypes[layout];
+  for (const side of ['red', 'blue'] as const) {
+    const boxes = side === 'red' ? mt.redBoxes : mt.blueBoxes;
+    const own = balls.filter((b) => b.kind === 'color' && b.side === side && !b.unofficial).sort((a, b) => a.number - b.number);
+    own.forEach((b, i) => {
+      const box = boxes[Math.floor(i / mt.ballsPerPlayer)];
+      if (box != null) b.playerBox = box;
+    });
+  }
 }
