@@ -1,15 +1,18 @@
 // 操作可能なコート表示。Pointer Events でタップ追加・1本指ドラッグ・ピンチズーム・パンを扱う。
 // 画面座標はズーム・パンの表示変換にのみ使い、球の座標は常にメートル単位で保持する。
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUI, viewCenteredOn, type ViewTransform } from '../../store/uiStore';
 import { useBoard, useDecision, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
 import { useDocStore } from '../../store/docStore';
 import * as A from '../../store/actions';
 import { CourtContent } from './CourtContent';
 import { RefereePaddle } from './RefereePaddle';
+import { ViewModeToggle } from './ViewModeToggle';
+import { hitAnnotationAt, hitBallAt, handleCourtTap } from './courtInteraction';
 import type { Ball, Vec } from '../../domain/types';
-import { boxAt, boxCenter, closestPointOnSegment, distance } from '../../domain/geometry';
-import { newId } from '../../domain/document';
+import { distance } from '../../domain/geometry';
+
+const Court3D = lazy(() => import('./Court3D'));
 import { clamp } from '../../domain/numeric';
 
 const MARGIN = 0.6;
@@ -42,6 +45,45 @@ type Gesture =
   | { kind: 'pinch'; d0: number; view0: ViewTransform; w0: Vec };
 
 export function CourtView() {
+  const viewMode = useUI((s) => s.viewMode);
+  const doc = useDoc();
+  const { preview } = useBoard();
+  const score = useScore();
+  const decision = useDecision();
+  const endScoring = doc.mode === 'match' && doc.match?.phase === 'endScoring' && !preview;
+  const paddleNext = !preview && decision && !decision.endComplete ? decision.side : null;
+  const view = useUI((s) => s.view);
+  return (
+    <div className="court-wrap relative h-full w-full overflow-hidden bg-slate-700 dark:bg-slate-900" data-testid="court" data-view-mode={viewMode}>
+      {viewMode === '3d' ? (
+        <Suspense fallback={<div className="absolute inset-0 grid place-items-center text-sm text-white">3D表示を準備しています…</div>}>
+          <Court3D />
+        </Suspense>
+      ) : (
+        <Court2D />
+      )}
+      {preview && (
+        <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1 text-sm font-bold text-black shadow">
+          投球履歴の再生中（閲覧のみ）
+        </div>
+      )}
+      <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 rounded-lg bg-slate-900/80 px-2.5 py-1 text-sm font-black tabular-nums text-white shadow" aria-label={`暫定得点 赤${score.red} 青${score.blue}`} data-testid="court-score">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bred" aria-hidden />
+          <span className="text-red-300">{score.red}</span>
+          <span className="text-slate-400">–</span>
+          <span className="text-blue-300">{score.blue}</span>
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bblue" aria-hidden />
+        </div>
+        {viewMode === '2d' && <div className="rounded bg-black/40 px-2 py-0.5 text-[11px] text-white">×{view.k.toFixed(1)}</div>}
+        <ViewModeToggle />
+      </div>
+      <RefereePaddle score={score} scoring={endScoring} nextSide={paddleNext} />
+    </div>
+  );
+}
+
+function Court2D() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 600, h: 800 });
@@ -51,9 +93,6 @@ export function CourtView() {
   const profile = useProfile();
   const score = useScore();
   const overlaps = useOverlaps();
-  const decision = useDecision();
-  const endScoring = doc.mode === 'match' && doc.match?.phase === 'endScoring' && !preview;
-  const paddleNext = !preview && decision && !decision.endComplete ? decision.side : null;
   const ui = useUI();
   const { view, display, tool } = ui;
 
@@ -98,36 +137,9 @@ export function CourtView() {
     useUI.getState().setView({ k: nk, tx: u.x - nk * w.x, ty: u.y - nk * w.y });
   }, []);
 
-  const hitBall = (p: Vec, radiusPx: number): Ball | null => {
-    const g = geo.current;
-    const ppm = g.s0 * g.view.k;
-    let best: Ball | null = null;
-    let bestD = Infinity;
-    for (const b of board.balls) {
-      if (b.status === 'available') continue;
-      const d = distance(p, b);
-      const hr = Math.max(b.radius, radiusPx / ppm);
-      if (d <= hr && d < bestD) {
-        best = b;
-        bestD = d;
-      }
-    }
-    return best;
-  };
-
-  const hitAnnotation = (p: Vec): { id: string; handle: 'body' | 'from' | 'to' } | null => {
-    const g = geo.current;
-    const hr = 20 / (g.s0 * g.view.k);
-    for (let i = board.annotations.length - 1; i >= 0; i--) {
-      const a = board.annotations[i];
-      if (a.type === 'arrow') {
-        if (distance(p, a.to) <= hr) return { id: a.id, handle: 'to' };
-        if (distance(p, a.from) <= hr) return { id: a.id, handle: 'from' };
-        if (closestPointOnSegment(p, a.from, a.to).dist <= hr * 0.6) return { id: a.id, handle: 'body' };
-      } else if (distance(p, a) <= hr) return { id: a.id, handle: 'body' };
-    }
-    return null;
-  };
+  const mppNow = () => 1 / (geo.current.s0 * geo.current.view.k);
+  const hitBall = (p: Vec, radiusPx: number): Ball | null => hitBallAt(board.balls, p, radiusPx * mppNow());
+  const hitAnnotation = (p: Vec) => hitAnnotationAt(board, p, 20 * mppNow());
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -210,67 +222,7 @@ export function CourtView() {
     }
   };
 
-  const onTap = (w: Vec) => {
-    const st = useUI.getState();
-    if (preview) return;
-    const t = st.tool;
-    if (t === 'jack' || t === 'red' || t === 'blue') {
-      const id = A.addBallAt(t, w);
-      if (id) st.select(id);
-      return;
-    }
-    if (t === 'select') {
-      st.select(null);
-      return;
-    }
-    if (t === 'delete') {
-      const hb = hitBall(w, 22);
-      if (hb) return void A.removeBall(hb.id);
-      const ha = hitAnnotation(w);
-      if (ha) void A.removeAnnotation(ha.id);
-      return;
-    }
-    if (t === 'measure') {
-      const hb = hitBall(w, 18);
-      const p = hb ? { x: hb.x, y: hb.y } : w;
-      st.setMeasure(st.measure.length >= 2 ? [p] : [...st.measure, p]);
-      return;
-    }
-    if (t === 'target') {
-      const n = board.annotations.filter((a) => a.type === 'target').length + 1;
-      const id = newId('a');
-      A.addAnnotation({ id, type: 'target', x: w.x, y: w.y, name: `目標${n}`, priority: 2, memo: '', color: '#16a34a' });
-      st.select(id);
-      return;
-    }
-    if (t === 'text') {
-      void st.prompt({ title: '注釈テキスト', label: 'コート上に表示するテキスト', multiline: false }).then((text) => {
-        if (text) {
-          const id = newId('a');
-          A.addAnnotation({ id, type: 'text', x: w.x, y: w.y, text, color: '#7c2d12' });
-          st.select(id);
-        }
-      });
-      return;
-    }
-    if (t === 'arrow') {
-      const hb = hitBall(w, 16);
-      if (!st.arrowStart) {
-        const box = boxAt(court, w);
-        if (hb) st.setArrowStart({ p: { x: hb.x, y: hb.y }, box: null });
-        else if (box) st.setArrowStart({ p: boxCenter(court, box), box });
-        else st.setArrowStart({ p: w, box: null });
-        st.toast('矢印の終点（狙う位置）をタップしてください');
-      } else {
-        const to = hb ? { x: hb.x, y: hb.y } : w;
-        const id = newId('a');
-        const n = board.annotations.filter((a) => a.type === 'arrow').length + 1;
-        A.addAnnotation({ id, type: 'arrow', from: st.arrowStart.p, fromBox: st.arrowStart.box, to, name: `コース${n}`, color: '#ea580c', tags: [], memo: '' });
-        st.setArrowStart(null);
-        st.select(id);
-      }
-    }
-  };
+  const onTap = (w: Vec) => handleCourtTap(w, { board, court, preview: !!preview, mpp: mppNow() });
 
   const endPointer = (e: React.PointerEvent, cancelled = false) => {
     const had = pointers.current.delete(e.pointerId);
@@ -344,7 +296,7 @@ export function CourtView() {
   const cursor = tool === 'select' ? 'default' : tool === 'delete' ? 'not-allowed' : 'crosshair';
 
   return (
-    <div ref={wrapRef} className="court-wrap relative h-full w-full overflow-hidden bg-slate-700 dark:bg-slate-900" data-testid="court">
+    <div ref={wrapRef} className="absolute inset-0">
       <svg
         ref={svgRef}
         className="absolute inset-0 h-full w-full select-none"
@@ -382,12 +334,6 @@ export function CourtView() {
           />
         </g>
       </svg>
-
-      {preview && (
-        <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1 text-sm font-bold text-black shadow">
-          投球履歴の再生中（閲覧のみ）
-        </div>
-      )}
 
       {inset && (
         <button
@@ -428,17 +374,6 @@ export function CourtView() {
         <button className="zoom-btn text-[11px] leading-tight" onClick={focusJack} aria-label="ジャック周辺を拡大" title="ジャック周辺を拡大">J<br />周辺</button>
         <button className="zoom-btn text-[11px] leading-tight" onClick={fit} aria-label="全体表示" title="コート全体を表示" data-testid="fit">全体</button>
       </div>
-      <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1.5">
-        <div className="flex items-center gap-1.5 rounded-lg bg-slate-900/80 px-2.5 py-1 text-sm font-black tabular-nums text-white shadow" aria-label={`暫定得点 赤${score.red} 青${score.blue}`} data-testid="court-score">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bred" aria-hidden />
-          <span className="text-red-300">{score.red}</span>
-          <span className="text-slate-400">–</span>
-          <span className="text-blue-300">{score.blue}</span>
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-bblue" aria-hidden />
-        </div>
-        <div className="rounded bg-black/40 px-2 py-0.5 text-[11px] text-white">×{view.k.toFixed(1)}</div>
-      </div>
-      <RefereePaddle score={score} scoring={endScoring} nextSide={paddleNext} />
     </div>
   );
 }

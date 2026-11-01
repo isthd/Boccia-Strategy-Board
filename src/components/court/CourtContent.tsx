@@ -48,6 +48,8 @@ export interface CourtContentProps {
   overlapIds?: Set<string>;
   measure?: Vec[];
   arrowStart?: Vec | null;
+  /** false のとき球の本体を描かない（3D表示の床として使う。球は立体で別に描く） */
+  ballBodies?: boolean;
 }
 
 const ballFill = (b: Ball) => (b.kind === 'jack' ? PALETTE.jack : b.side === 'red' ? PALETTE.red : PALETTE.blue);
@@ -257,6 +259,10 @@ export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
             )}
             {overlap && !inactive && <circle cx={b.x} cy={b.y} r={b.radius + px(2.5)} fill="none" stroke={PALETTE.warn} strokeWidth={px(2)} />}
             {boundary.has(b.id) && <circle cx={b.x} cy={b.y} r={b.radius + px(8)} fill="none" stroke={PALETTE.warn} strokeWidth={px(1.5)} strokeDasharray={`${px(2)} ${px(2)}`} />}
+            {p.ballBodies === false ? (
+              scoring.has(b.id) && <circle cx={b.x} cy={b.y} r={b.radius + px(3)} fill="none" stroke="#fff" strokeWidth={px(2.5)} />
+            ) : (
+            <>
             <circle
               cx={b.x}
               cy={b.y}
@@ -273,6 +279,8 @@ export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
                 <line x1={b.x - b.radius * 0.6} y1={b.y - b.radius * 0.6} x2={b.x + b.radius * 0.6} y2={b.y + b.radius * 0.6} />
                 <line x1={b.x + b.radius * 0.6} y1={b.y - b.radius * 0.6} x2={b.x - b.radius * 0.6} y2={b.y + b.radius * 0.6} />
               </g>
+            )}
+            </>
             )}
             {p.showNumbers && (
               <text

@@ -57,6 +57,17 @@ export function viewCenteredOn(court: Pick<CourtConfig, 'width' | 'length'>, c: 
   return { k, tx: court.width / 2 - k * c.x, ty: court.length / 2 - k * c.y };
 }
 
+/** コートの表示方式 */
+export type ViewMode = '2d' | '3d';
+
+function loadViewMode(): ViewMode {
+  try {
+    return localStorage.getItem('bsb-viewmode') === '3d' ? '3d' : '2d';
+  } catch {
+    return '2d';
+  }
+}
+
 export type PanelTab = 'info' | 'balls' | 'tactics' | 'variants' | 'match' | 'settings';
 
 export type DialogName =
@@ -96,6 +107,7 @@ export interface UIState {
   tool: Tool;
   selectedId: string | null;
   view: ViewTransform;
+  viewMode: ViewMode;
   display: DisplaySettings;
   measure: Vec[];
   arrowStart: { p: Vec; box: number | null } | null;
@@ -113,6 +125,7 @@ export interface UIState {
   setTool: (t: Tool) => void;
   select: (id: string | null) => void;
   setView: (v: ViewTransform) => void;
+  setViewMode: (m: ViewMode) => void;
   setDisplay: (p: Partial<DisplaySettings>) => void;
   setMeasure: (m: Vec[]) => void;
   setArrowStart: (a: UIState['arrowStart']) => void;
@@ -146,6 +159,7 @@ export const useUI = create<UIState>((set, get) => ({
   tool: 'select',
   selectedId: null,
   view: viewCenteredOn(DEFAULT_COURT, DEFAULT_COURT.cross, DEFAULT_ZOOM),
+  viewMode: loadViewMode(),
   display: loadDisplay(),
   measure: [],
   arrowStart: null,
@@ -162,6 +176,14 @@ export const useUI = create<UIState>((set, get) => ({
   setTool: (tool) => set({ tool, measure: [], arrowStart: null }),
   select: (selectedId) => set({ selectedId }),
   setView: (view) => set({ view }),
+  setViewMode: (viewMode) => {
+    try {
+      localStorage.setItem('bsb-viewmode', viewMode);
+    } catch {
+      /* ignore */
+    }
+    set({ viewMode });
+  },
   setDisplay: (p) => {
     const display = { ...get().display, ...p };
     try {

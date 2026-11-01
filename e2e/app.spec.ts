@@ -239,3 +239,29 @@ test('既定ズームは×2.0、×1.0以下では球の拡大小窓を表示', a
   await page.getByTestId('court-inset').click();
   await expect(page.getByTestId('court-inset')).toHaveCount(0);
 });
+
+test('2D／3D表示の切替（3Dでもタップで球を追加でき、設定はリロード後も残る）', async ({ page }) => {
+  await freshStart(page);
+  await page.getByTestId('tool-jack').tap();
+  await tapAt(page, 3, 6.3);
+  await page.getByTestId('tool-red').tap();
+  await tapAt(page, 3.5, 6.3);
+  await expect(page.getByTestId('court-score')).toHaveAttribute('aria-label', '暫定得点 赤1 青0');
+
+  await page.getByTestId('view-3d').click();
+  await expect(page.getByTestId('court-3d').locator('canvas')).toBeVisible();
+  await expect(page.getByTestId('court')).toHaveAttribute('data-view-mode', '3d');
+
+  // 真上の視点では画面中央がコート中央(3, 6.25)
+  await page.getByTestId('view3d-top').click();
+  await page.waitForTimeout(800);
+  await page.getByTestId('tool-blue').tap();
+  const box = (await page.getByTestId('court-3d').locator('canvas').boundingBox())!;
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByTestId('court-score')).toHaveAttribute('aria-label', '暫定得点 赤0 青1');
+
+  await page.reload();
+  await expect(page.getByTestId('court')).toHaveAttribute('data-view-mode', '3d');
+  await page.getByTestId('view-2d').click();
+  await expect(page.locator('[data-testid="court"] svg').first()).toBeVisible();
+});
