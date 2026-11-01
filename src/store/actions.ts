@@ -114,6 +114,12 @@ function addMatchBallAt(kind: 'jack' | Side, p: Vec): string | null {
   const preferBox = thrown.red + thrown.blue === 0 && end.jackBox != null && profile ? end.jackBox : null;
   const cand = (preferBox != null ? M.availableBalls(m, kind, preferBox)[0] : undefined) ?? M.availableBalls(m, kind)[0];
   if (!cand) return null;
+  return putPending(cand, p);
+}
+
+/** 手持ちの球を1つ選んでコートに仮置きする（前の仮置き球は手持ちに戻す） */
+function putPending(cand: Ball, p: Vec): string {
+  const board = doc().match!.board;
   const pos = round(snapPos(board, cand.id, p, cand.radius));
   apply(`${ballLabel(cand)}を仮置き（未記録）`, (dd) => {
     const mm = dd.match!;
@@ -128,6 +134,28 @@ function addMatchBallAt(kind: 'jack' | Side, p: Vec): string | null {
     mm.pendingBallId = cand.id;
   });
   return cand.id;
+}
+
+/** 試合再現：ボックスに並んだ手持ちの球をドラッグしてコートに置く */
+export function placeHandBall(ballId: string, p: Vec): string | null {
+  const d = doc();
+  const m = d.match;
+  if (d.mode !== 'match' || !m) return null;
+  const ball = m.board.balls.find((b) => b.id === ballId);
+  if (!ball || ball.status !== 'available') return null;
+  if (ball.kind === 'jack') return addMatchBallAt('jack', p);
+  if (!ball.side) return null;
+  if (m.phase !== 'color') {
+    toast(m.phase === 'jack' ? '先にジャック投球を記録してください。' : 'このエンドの投球は終了しています。', 'warn');
+    return null;
+  }
+  const pending = m.pendingBallId ? m.board.balls.find((b) => b.id === m.pendingBallId) : undefined;
+  // 仮置き中の球と同じサイドなら、その球を戻して入れ替える（残り数は変わらない）
+  if (!(pending && pending.side === ball.side) && M.remainingThrows(m)[ball.side] <= 0) {
+    toast(`${sideLabel(ball.side)}は投球できる球が残っていません。`, 'warn');
+    return null;
+  }
+  return putPending(ball, p);
 }
 
 /** ドラッグ中の位置更新（履歴は endGesture で1回だけ積む） */

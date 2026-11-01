@@ -2,7 +2,7 @@
 // 画面座標はズーム・パンの表示変換にのみ使い、球の座標は常にメートル単位で保持する。
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUI, viewCenteredOn, type ViewTransform } from '../../store/uiStore';
-import { useBoard, useDecision, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
+import { useBoard, useDecision, useDoc, useHand, useOverlaps, useProfile, useScore } from '../../store/derived';
 import { useDocStore } from '../../store/docStore';
 import * as A from '../../store/actions';
 import { CourtContent } from './CourtContent';
@@ -11,6 +11,7 @@ import { ViewModeToggle } from './ViewModeToggle';
 import { hitAnnotationAt, hitBallAt, handleCourtTap } from './courtInteraction';
 import type { Ball, Vec } from '../../domain/types';
 import { distance } from '../../domain/geometry';
+import { hitHandBall } from '../../domain/hand';
 
 const Court3D = lazy(() => import('./Court3D'));
 import { clamp } from '../../domain/numeric';
@@ -42,6 +43,7 @@ type Gesture =
   | { kind: 'pending'; id: number; sx: number; sy: number; world: Vec; view: ViewTransform; moved: boolean }
   | { kind: 'ball'; id: number; ballId: string; offset: Vec; sx: number; sy: number; moved: boolean; tapWorld: Vec | null }
   | { kind: 'annot'; id: number; annId: string; handle: 'body' | 'from' | 'to'; start: Vec; orig: unknown; sx: number; sy: number; moved: boolean }
+  | { kind: 'hand'; id: number; ballId: string; sx: number; sy: number; moved: boolean }
   | { kind: 'pinch'; d0: number; view0: ViewTransform; w0: Vec };
 
 export function CourtView() {
@@ -93,6 +95,12 @@ function Court2D() {
   const profile = useProfile();
   const score = useScore();
   const overlaps = useOverlaps();
+  const handAll = useHand();
+  const [handDrag, setHandDrag] = useState<{ ballId: string; x: number; y: number } | null>(null);
+  const hand = useMemo(
+    () => (handDrag ? handAll.map((h) => (h.ball.id === handDrag.ballId ? { ...h, x: handDrag.x, y: handDrag.y } : h)) : handAll),
+    [handAll, handDrag],
+  );
   const ui = useUI();
   const { view, display, tool } = ui;
 
@@ -162,6 +170,14 @@ function Court2D() {
     if (pointers.current.size > 2) return;
     const w = toWorld(sx, sy);
     const st = useUI.getState();
+    // ボックスの手持ち球：ドラッグしてコートに置く
+    if (!preview && st.tool !== 'delete' && st.tool !== 'measure' && st.tool !== 'arrow') {
+      const hh = hitHandBall(handAll, w, 14 * mppNow());
+      if (hh) {
+        gesture.current = { kind: 'hand', id: e.pointerId, ballId: hh.ball.id, sx, sy, moved: false };
+        return;
+      }
+    }
     if (!preview && (st.tool === 'select' || st.tool === 'jack' || st.tool === 'red' || st.tool === 'blue' || st.tool === 'target')) {
       const hb = st.tool === 'target' ? null : hitBall(w, 22);
       if (hb) {
@@ -203,7 +219,9 @@ function Court2D() {
     if (!g.moved && movedPx < TAP_SLOP) return;
     g.moved = true;
     const w = toWorld(sx, sy);
-    if (g.kind === 'ball') {
+    if (g.kind === 'hand') {
+      setHandDrag({ ballId: g.ballId, x: w.x, y: w.y });
+    } else if (g.kind === 'ball') {
       if (g.tapWorld) useUI.getState().select(g.ballId);
       A.dragBall(g.ballId, { x: w.x + g.offset.x, y: w.y + g.offset.y });
     } else if (g.kind === 'annot') {
@@ -234,6 +252,19 @@ function Court2D() {
     }
     if (g.kind === 'none' || g.id !== e.pointerId) return;
     gesture.current = { kind: 'none' };
+    if (g.kind === 'hand') {
+      setHandDrag(null);
+      if (!g.moved || cancelled) {
+        if (!cancelled) useUI.getState().toast('ボックスの球はコートまでドラッグすると置けます');
+        return;
+      }
+      const { sx, sy } = local(e);
+      const w = toWorld(sx, sy);
+      if (w.y >= court.playingLength) return; // ボックス内で離したら置かない
+      const id = A.placeHandBall(g.ballId, w);
+      if (id) useUI.getState().select(id);
+      return;
+    }
     if (g.kind === 'ball') {
       if (g.moved && !cancelled) A.finishDrag(g.ballId);
       else {
@@ -331,6 +362,7 @@ function Court2D() {
             overlapIds={overlapIds}
             measure={tool === 'measure' ? ui.measure : undefined}
             arrowStart={tool === 'arrow' ? ui.arrowStart?.p ?? null : null}
+            hand={hand}
           />
         </g>
       </svg>

@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useUI } from '../../store/uiStore';
-import { useBoard, useDoc, useOverlaps, useProfile, useScore } from '../../store/derived';
+import { useBoard, useDoc, useHand, useOverlaps, useProfile, useScore } from '../../store/derived';
 import { useDocStore } from '../../store/docStore';
 import * as A from '../../store/actions';
 import { CourtContent, PALETTE } from './CourtContent';
@@ -62,6 +62,8 @@ interface Engine {
   controls: OrbitControls;
   floor: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   balls: Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>>;
+  /** 試合再現：ボックスに並べた手持ちの球 */
+  hand: Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>>;
   sphere: THREE.SphereGeometry;
   dirty: boolean;
   anim: { from: THREE.Vector3; to: THREE.Vector3; tFrom: THREE.Vector3; tTo: THREE.Vector3; start: number } | null;
@@ -76,6 +78,7 @@ export default function Court3D() {
   const profile = useProfile();
   const score = useScore();
   const overlaps = useOverlaps();
+  const hand = useHand();
   const ui = useUI();
   const { display, tool } = ui;
   const showTargetBox = display.showTargetBox ?? profile.showTargetBox;
@@ -136,7 +139,7 @@ export default function Court3D() {
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
-    const eng: Engine = { renderer, scene, camera, controls, floor, balls: new Map(), sphere: new THREE.SphereGeometry(1, 40, 28), dirty: true, anim: null };
+    const eng: Engine = { renderer, scene, camera, controls, floor, balls: new Map(), hand: new Map(), sphere: new THREE.SphereGeometry(1, 40, 28), dirty: true, anim: null };
     engineRef.current = eng;
     controls.addEventListener('change', () => (eng.dirty = true));
 
@@ -194,6 +197,34 @@ export default function Court3D() {
       engineRef.current = null;
     };
   }, []);
+
+  // ---- 手持ちの球（ボックス内） ----
+  useEffect(() => {
+    const eng = engineRef.current!;
+    const seen = new Set<string>();
+    for (const h of hand) {
+      seen.add(h.ball.id);
+      let m = eng.hand.get(h.ball.id);
+      if (!m) {
+        m = new THREE.Mesh(eng.sphere, new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0 }));
+        m.castShadow = true;
+        m.userData.handBallId = h.ball.id;
+        eng.scene.add(m);
+        eng.hand.set(h.ball.id, m);
+      }
+      m.material.color.set(ballColor(h.ball));
+      m.scale.setScalar(h.ball.radius);
+      m.position.set(h.x, h.ball.radius, h.y);
+    }
+    for (const [id, m] of eng.hand) {
+      if (!seen.has(id)) {
+        eng.scene.remove(m);
+        m.material.dispose();
+        eng.hand.delete(id);
+      }
+    }
+    eng.dirty = true;
+  }, [hand]);
 
   // ---- 床の大きさ ----
   useEffect(() => {
@@ -338,6 +369,7 @@ export default function Court3D() {
     type G =
       | { kind: 'none' }
       | { kind: 'empty'; id: number; sx: number; sy: number; moved: boolean }
+      | { kind: 'hand'; id: number; ballId: string; home: THREE.Vector3; sx: number; sy: number; moved: boolean }
       | { kind: 'ball'; id: number; ballId: string; offset: Vec; height: number; sx: number; sy: number; moved: boolean; tapWorld: Vec | null };
     let g: G = { kind: 'none' };
 
@@ -381,6 +413,11 @@ export default function Court3D() {
           else useDocStore.getState().cancelGesture();
           eng.controls.enabled = true;
         }
+        if (g.kind === 'hand') {
+          eng.hand.get(g.ballId)?.position.copy(g.home);
+          eng.controls.enabled = true;
+          eng.dirty = true;
+        }
         g = { kind: 'none' };
         return;
       }
@@ -390,6 +427,20 @@ export default function Court3D() {
       const w = onPlane(0);
       const st = useUI.getState();
       const t = st.tool;
+      // ボックスの手持ち球：ドラッグしてコートに置く
+      if (!live.current.preview && t !== 'delete' && t !== 'measure' && t !== 'arrow') {
+        const hh = ray.intersectObjects([...eng.hand.values()], false)[0];
+        if (hh) {
+          eng.controls.enabled = false;
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch {
+            /* ignore */
+          }
+          g = { kind: 'hand', id: e.pointerId, ballId: hh.object.userData.handBallId as string, home: hh.object.position.clone(), sx, sy, moved: false };
+          return;
+        }
+      }
       if (!live.current.preview && (t === 'select' || t === 'jack' || t === 'red' || t === 'blue')) {
         const hb = pickBall(w, r, 22);
         if (hb) {
@@ -415,7 +466,15 @@ export default function Court3D() {
       const { sx, sy, r } = local(e);
       if (!g.moved && Math.hypot(sx - g.sx, sy - g.sy) < TAP_SLOP) return;
       g.moved = true;
-      if (g.kind === 'ball') {
+      if (g.kind === 'hand') {
+        setRay(sx, sy, r);
+        const m = eng.hand.get(g.ballId);
+        const p = m && onPlane(m.scale.x);
+        if (m && p) {
+          m.position.set(p.x, m.scale.x, p.y);
+          eng.dirty = true;
+        }
+      } else if (g.kind === 'ball') {
         setRay(sx, sy, r);
         const p = onPlane(g.height);
         if (!p) return;
@@ -431,6 +490,24 @@ export default function Court3D() {
       g = { kind: 'none' };
       const { sx, sy, r } = local(e);
       const { board: bd, court: ct, preview: pv } = live.current;
+      if (cur.kind === 'hand') {
+        eng.controls.enabled = true;
+        const m = eng.hand.get(cur.ballId);
+        const p = m ? { x: m.position.x, y: m.position.z } : null;
+        if (m) {
+          m.position.copy(cur.home);
+          eng.dirty = true;
+        }
+        if (!cur.moved || cancelled) {
+          if (!cancelled) useUI.getState().toast('ボックスの球はコートまでドラッグすると置けます');
+          return;
+        }
+        if (p && p.y < ct.playingLength) {
+          const id = A.placeHandBall(cur.ballId, p);
+          if (id) useUI.getState().select(id);
+        }
+        return;
+      }
       if (cur.kind === 'ball') {
         eng.controls.enabled = true;
         if (cur.moved && !cancelled) A.finishDrag(cur.ballId);

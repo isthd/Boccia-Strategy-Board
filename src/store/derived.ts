@@ -8,6 +8,7 @@ import { getProfile } from '../domain/rules/registry';
 import { findOverlaps } from '../domain/geometry';
 import type { Board } from '../domain/types';
 import * as M from '../domain/match';
+import { handBalls, type HandBall } from '../domain/hand';
 
 export function useDoc() {
   return useDocStore((s) => s.doc)!;
@@ -51,4 +52,17 @@ export function useDecision() {
     if (doc.match.phase !== 'color') return null;
     return M.decideNext(doc.match, doc.court, profile);
   }, [doc, profile]);
+}
+
+/** 試合再現で、ボックスに並べて見せる手持ちの球（自由配置では空） */
+export function useHand(): HandBall[] {
+  const doc = useDoc();
+  const profile = useProfile();
+  const { board, preview } = useBoard();
+  return useMemo(() => {
+    if (doc.mode !== 'match' || !doc.match) return [];
+    const m = doc.match;
+    const jackBox = !preview && m.phase === 'jack' ? M.currentJackThrower(m, profile).box : null;
+    return handBalls(board.balls, doc.court, jackBox ?? null);
+  }, [doc, profile, board, preview]);
 }

@@ -5,6 +5,7 @@ import { arrowAngleDeg, boxCenter, contactCandidates, distance, isCircleInPlayin
 import type { ScoreResult } from '../../domain/scoring';
 import { ballShortLabel } from '../../domain/document';
 import { fmtCm } from '../../domain/numeric';
+import type { HandBall } from '../../domain/hand';
 
 export const PALETTE = {
   floor: '#8fa7bd',
@@ -50,6 +51,8 @@ export interface CourtContentProps {
   arrowStart?: Vec | null;
   /** false のとき球の本体を描かない（3D表示の床として使う。球は立体で別に描く） */
   ballBodies?: boolean;
+  /** 試合再現：ボックスに並べる手持ちの球 */
+  hand?: HandBall[];
 }
 
 const ballFill = (b: Ball) => (b.kind === 'jack' ? PALETTE.jack : b.side === 'red' ? PALETTE.red : PALETTE.blue);
@@ -218,6 +221,23 @@ export const CourtContent = memo(function CourtContent(p: CourtContentProps) {
   return (
     <g>
       <CourtLines court={court} px={px} showTargetBox={p.showTargetBox} showGrid={p.showGrid} showInvalidArea={p.showInvalidArea} showDimensions={p.showDimensions} />
+
+      {p.hand && p.ballBodies !== false && p.hand.length > 0 && (
+        <g data-testid="hand-balls">
+          {p.hand.map((h) => (
+            <circle
+              key={`h-${h.ball.id}`}
+              data-hand-ball-id={h.ball.id}
+              cx={h.x}
+              cy={h.y}
+              r={h.ball.radius}
+              fill={ballFill(h.ball)}
+              stroke={ballStroke(h.ball)}
+              strokeWidth={Math.min(px(1.2), h.ball.radius * 0.2)}
+            />
+          ))}
+        </g>
+      )}
 
       {p.showAnnotations !== false && <AnnotationShapes annotations={board.annotations} px={px} balls={board.balls} showContacts={p.showContacts} selectedId={p.selectedId} />}
 
