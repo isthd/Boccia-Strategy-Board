@@ -21,6 +21,7 @@ import { useDocStore } from '../store/docStore';
 import { useDoc, useProfile } from '../store/derived';
 import * as A from '../store/actions';
 import { activeBoard } from '../domain/document';
+import { useAutoClock } from '../store/useAutoClock';
 
 const TABS: Array<{ id: PanelTab; label: string }> = [
   { id: 'info', label: '盤面' },
@@ -88,6 +89,7 @@ function useKeyboard() {
 
 export function App() {
   useKeyboard();
+  useAutoClock();
   const ui = useUI();
   const doc = useDoc();
   const profile = useProfile();

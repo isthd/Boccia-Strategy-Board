@@ -33,7 +33,7 @@ export function RecordThrowDialog() {
   const [box, setBox] = useState<number>(defaultBox);
   const [result, setResult] = useState<'valid' | 'out' | 'retracted'>(pending ? 'valid' : 'out');
   const [note, setNote] = useState('');
-  const elapsed = useClock.getState().elapsedNow();
+  const elapsed = useClock.getState().elapsedNow() ?? (pending ? useClock.getState().lastElapsed : null);
   const [duration, setDuration] = useState<number>(elapsed != null ? Math.round(elapsed * 10) / 10 : 0);
   const outCands = useMemo(() => M.autoOutCandidates(m, doc.court, null), [m, doc.court]);
   const [outIds, setOutIds] = useState<string[]>(() => outCands.filter((b) => b.id !== m.pendingBallId).map((b) => b.id));

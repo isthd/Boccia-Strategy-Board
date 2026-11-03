@@ -11,6 +11,7 @@ import { roundTo } from '../domain/numeric';
 import * as M from '../domain/match';
 import { getProfile } from '../domain/rules/registry';
 import { assignBoxes, sandboxLayoutOf, type SandboxLayout } from '../domain/hand';
+import { useClock } from './clockStore';
 
 const doc = () => useDocStore.getState().doc!;
 const apply = (label: string, fn: (d: Draft<BoardDoc>) => void) => useDocStore.getState().apply(label, fn);
@@ -88,6 +89,7 @@ function addMatchBallAt(kind: 'jack' | Side, p: Vec): string | null {
       j.y = pos.y;
       j.status = 'inPlay';
     });
+    if (m.phase === 'jack') autoRecordThrow();
     return jack.id;
   }
   if (m.phase !== 'color') {
@@ -115,7 +117,9 @@ function addMatchBallAt(kind: 'jack' | Side, p: Vec): string | null {
   const preferBox = thrown.red + thrown.blue === 0 && end.jackBox != null && profile ? end.jackBox : null;
   const cand = (preferBox != null ? M.availableBalls(m, kind, preferBox)[0] : undefined) ?? M.availableBalls(m, kind)[0];
   if (!cand) return null;
-  return putPending(cand, p);
+  const id = putPending(cand, p);
+  autoRecordThrow();
+  return id;
 }
 
 /** 手持ちの球を1つ選んでコートに仮置きする（前の仮置き球は手持ちに戻す） */
@@ -156,7 +160,34 @@ export function placeHandBall(ballId: string, p: Vec): string | null {
     toast(`${sideLabel(ball.side)}は投球できる球が残っていません。`, 'warn');
     return null;
   }
-  return putPending(ball, p);
+  const id = putPending(ball, p);
+  autoRecordThrow();
+  return id;
+}
+
+/**
+ * 試合再現：盤面に置かれた投球（ジャック／手持ちから出した球）を自動で判定して1投として記録する。
+ * 設定で無効にしているとき、または審判判断が必要な局面では何もしない（従来どおり手動で記録）。
+ */
+export function autoRecordThrow(): boolean {
+  if (!useUI.getState().display.autoRecord) return false;
+  const d = doc();
+  const m = d.match;
+  if (d.mode !== 'match' || !m) return false;
+  const profile = getProfile(d.profileId);
+  const thrower = m.phase === 'jack' ? M.currentJackThrower(m, profile).side : m.board.balls.find((b) => b.id === m.pendingBallId)?.side;
+  const clock = useClock.getState();
+  const runningSide = clock.running;
+  const el = runningSide ? clock.stop() : null;
+  const out = M.autoRecordFromBoard(m, d.court, profile, runningSide && runningSide === thrower ? el : null);
+  if (!out) {
+    if (m.phase === 'jack') toast('ジャックがVラインにかかっています。有効かファウルかを選んで記録してください。', 'warn');
+    return false;
+  }
+  matchApply(`1投を自動記録（${out.message}）`, () => out.match);
+  toast(`自動記録：${out.message}`);
+  for (const w of out.warnings) toast(w, 'warn');
+  return true;
 }
 
 function placeSandboxHandBall(ballId: string, p: Vec): string | null {

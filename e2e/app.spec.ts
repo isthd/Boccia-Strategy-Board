@@ -180,6 +180,7 @@ test('試合再現：通常版 個人戦の1エンド進行（ドラッグでは
   await freshStart(page);
   await page.getByTestId('mode-match').click();
   await page.getByTestId('match-start').click();
+  await page.getByTestId('auto-record').uncheck();
   await expect(page.getByTestId('jack-phase')).toContainText('赤 3番ボックス');
   await page.getByTestId('tool-jack').tap();
   await tapAt(page, 3, 5);
@@ -212,6 +213,48 @@ test('試合再現：通常版 個人戦の1エンド進行（ドラッグでは
   await expect(page.getByTestId('score-table')).toContainText('第1エンド');
   await expect(page.getByTestId('total-blue')).toHaveText('1');
   await expect(page.getByTestId('jack-phase')).toContainText('青 4番ボックス');
+});
+
+test('試合再現：盤面から投球を自動判定・記録し、持ち時間が次のサイドへ自動で進む', async ({ page }) => {
+  await freshStart(page);
+  await page.getByTestId('mode-match').click();
+  await page.getByTestId('match-start').click();
+  // ジャック担当（赤3番）の時計が自動で動く
+  await expect(page.getByTestId('clock-red')).toHaveAttribute('data-running', 'true');
+  await expect(page.getByTestId('clock-blue')).toHaveAttribute('data-running', 'false');
+
+  // ジャックを置く → 有効として自動記録 → 赤のカラー球の時計
+  await page.getByTestId('tool-jack').tap();
+  await tapAt(page, 3, 5);
+  await expect(page.getByTestId('color-phase')).toBeVisible();
+  await expect(page.getByTestId('match-next')).toContainText('次は赤');
+  await expect(page.getByTestId('clock-red')).toHaveAttribute('data-running', 'true');
+
+  // 赤を置く → 自動記録、次は青の時計
+  await page.getByTestId('tool-red').tap();
+  await tapAt(page, 3.2, 5);
+  await expect(page.getByTestId('color-phase')).toContainText('赤 残り5球');
+  await expect(page.getByTestId('match-next')).toContainText('次は青');
+  await expect(page.getByTestId('clock-blue')).toHaveAttribute('data-running', 'true');
+  await expect(page.getByTestId('clock-red')).toHaveAttribute('data-running', 'false');
+
+  // 青がより近く → 次は赤
+  await page.getByTestId('tool-blue').tap();
+  await tapAt(page, 3, 5.12);
+  await expect(page.getByTestId('match-next')).toContainText('次は赤');
+  await expect(page.getByTestId('clock-red')).toHaveAttribute('data-running', 'true');
+
+  // 青を遠くへ置き直す（当たって動いた想定）→ 判定が変わり、時計も青へ付け替わる
+  await page.getByTestId('tool-select').tap();
+  await dragTouch(page, [3, 5.12], [3, 6.2]);
+  await expect(page.getByTestId('match-next')).toContainText('次は青');
+  await expect(page.getByTestId('clock-blue')).toHaveAttribute('data-running', 'true');
+
+  // 一時停止
+  await page.getByTestId('clock-pause').click();
+  await expect(page.getByTestId('clock-blue')).toHaveAttribute('data-running', 'false');
+  await page.getByTestId('clock-pause').click();
+  await expect(page.getByTestId('clock-blue')).toHaveAttribute('data-running', 'true');
 });
 
 test('規則版の切替：フレンドリー版はファイナルショット', async ({ page }) => {

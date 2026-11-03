@@ -200,3 +200,73 @@ describe('タイブレイク：規則版を混同しない', () => {
     expect(friendlyV2.penaltyBalls).toBe(false);
   });
 });
+
+describe('盤面からの自動判定', () => {
+  it('ジャック：有効エリアなら有効、無効エリアならファウルとして記録し、持ち時間の対象サイドが切り替わる', async () => {
+    const { autoRecordFromBoard, clockTarget } = await import('../domain/match');
+    const p = standardV2;
+    let m = createMatch(p, defaultSetup(p, 'individual'));
+    expect(clockTarget(m, C, p)).toBe('red');
+    placeJack(m, 3, 9); // 無効エリア（Vラインより手前）
+    expect(clockTarget(m, C, p)).toBeNull();
+    const foul = autoRecordFromBoard(m, C, p, 12)!;
+    expect(foul.match.ends[0].jackFouls).toBe(1);
+    m = foul.match;
+    placeJack(m, 3, 5);
+    const ok = autoRecordFromBoard(m, C, p, 8)!;
+    expect(ok.match.phase).toBe('color');
+    expect(clockTarget(ok.match, C, p)).toBe(ok.match.ends[0].jackSide);
+  });
+
+  it('カラー球：置いた球を有効／アウトで記録し、近い球で次のサイドを決める。エリア外へ出た球はアウト', async () => {
+    const { autoRecordFromBoard, clockTarget } = await import('../domain/match');
+    const p = standardV2;
+    let m = createMatch(p, defaultSetup(p, 'individual'));
+    placeJack(m, 3, 5);
+    m = recordJack(m, C, p, { result: 'valid', box: 3, note: '', durationSec: 5 });
+    m = place(m, 'red', 3.1, 5);
+    expect(clockTarget(m, C, p)).toBeNull();
+    m = autoRecordFromBoard(m, C, p, 10)!.match;
+    expect(remainingThrows(m).red).toBe(5);
+    expect(clockTarget(m, C, p)).toBe('blue');
+    // 青が赤より近い → 次は赤
+    m = place(m, 'blue', 3.05, 5);
+    m = autoRecordFromBoard(m, C, p, 10)!.match;
+    expect(clockTarget(m, C, p)).toBe('red');
+    // 赤が外に投げる → アウト
+    m = place(m, 'red', 7, 5);
+    const r = autoRecordFromBoard(m, C, p, 10)!;
+    expect(r.message).toContain('アウト');
+    m = r.match;
+    expect(m.board.balls.filter((b) => b.side === 'red' && b.status === 'out')).toHaveLength(1);
+    // 弾き出された青をエリア外へ動かす → 次の記録で自動アウト
+    const blue = m.board.balls.find((b) => b.side === 'blue' && b.status === 'inPlay')!;
+    blue.x = -1;
+    m = place(m, 'red', 3.3, 5);
+    m = autoRecordFromBoard(m, C, p, 10)!.match;
+    expect(m.board.balls.find((b) => b.id === blue.id)!.status).toBe('out');
+  });
+
+  it('Vラインにかかったジャックは自動記録しない', async () => {
+    const { autoRecordFromBoard } = await import('../domain/match');
+    const p = standardV2;
+    const m = createMatch(p, defaultSetup(p, 'individual'));
+    // 中心を V ライン上に置く
+    const j = m.board.balls.find((b) => b.kind === 'jack')!;
+    j.status = 'inPlay';
+    j.x = 3;
+    let lo = 0;
+    let hi = C.playingLength;
+    // 二分探索で有効→無効の境目を探す
+    const { jackAreaStatus } = await import('../domain/geometry');
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      j.y = mid;
+      if (jackAreaStatus(j, j.radius, C) === 'invalidArea') hi = mid;
+      else lo = mid;
+    }
+    j.y = lo;
+    expect(jackAreaStatus(j, j.radius, C)).toBe('touchingV');
+    expect(autoRecordFromBoard(m, C, p, 5)).toBeNull();
+  });
+});

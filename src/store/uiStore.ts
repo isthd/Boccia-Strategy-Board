@@ -29,6 +29,10 @@ export interface DisplaySettings {
   snap: boolean;
   showContacts: boolean;
   showInvalidArea: boolean;
+  /** 試合再現：盤面に置いた投球を自動で判定・記録する */
+  autoRecord: boolean;
+  /** 試合再現：次に投げるサイドの持ち時間を自動で進める */
+  autoClock: boolean;
 }
 
 export const DEFAULT_DISPLAY: DisplaySettings = {
@@ -41,6 +45,8 @@ export const DEFAULT_DISPLAY: DisplaySettings = {
   snap: false,
   showContacts: true,
   showInvalidArea: true,
+  autoRecord: true,
+  autoClock: true,
 };
 
 export interface ViewTransform {

@@ -18,6 +18,13 @@ export interface ClockState extends ClockSnapshot {
   stop: () => number | null;
   reset: (times: Record<Side, number>) => void;
   adjust: (side: Side, deltaSec: number) => void;
+  /** 計測中の経過時間を消費させずに、計測対象のサイドだけ付け替える（盤面の修正で次投球サイドが変わったとき） */
+  retarget: (side: Side) => void;
+  /** 直前に止めたときの経過秒（自動進行で止めた投球の所要時間を記録に使う） */
+  lastElapsed: number | null;
+  /** 自動進行の一時停止（タイムアウト・審判の中断など） */
+  paused: boolean;
+  setPaused: (p: boolean) => void;
   remainingNow: (side: Side, now?: number) => number;
   elapsedNow: (now?: number) => number | null;
 }
@@ -44,10 +51,22 @@ function load(): ClockSnapshot {
 
 export const useClock = create<ClockState>((set, get) => ({
   ...load(),
+  lastElapsed: null,
+  paused: false,
+  setPaused: (paused) => {
+    if (paused) get().stop();
+    set({ paused });
+  },
+  retarget: (side) => {
+    const st = get();
+    if (!st.running || st.running === side) return;
+    set({ running: side });
+    save({ key: st.key, remaining: st.remaining, running: side, startedAt: st.startedAt });
+  },
   ensure: (key, times) => {
     if (get().key === key) return;
     const s = { key, remaining: { ...times }, running: null, startedAt: null };
-    set(s);
+    set({ ...s, lastElapsed: null });
     save(s);
   },
   start: (side) => {
@@ -64,7 +83,7 @@ export const useClock = create<ClockState>((set, get) => ({
     const el = (Date.now() - st.startedAt) / 1000;
     const remaining = { ...st.remaining, [st.running]: Math.max(0, st.remaining[st.running] - el) };
     const s = { key: st.key, remaining, running: null, startedAt: null };
-    set(s);
+    set({ ...s, lastElapsed: el });
     save(s);
     return el;
   },

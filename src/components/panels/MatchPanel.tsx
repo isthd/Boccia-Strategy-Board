@@ -10,6 +10,7 @@ import { MATCH_TYPE_LABEL, SIDES, sideLabel, type Side } from '../../domain/type
 import { JACK_AREA_LABEL } from '../../domain/geometry';
 import { ballLabel } from '../../domain/document';
 import { sideOfBox } from '../../domain/rules/registry';
+import { endTimes } from '../../store/useAutoClock';
 
 function useTick(ms = 250) {
   const [, set] = useState(0);
@@ -30,14 +31,47 @@ function Clocks() {
   const end = M.currentEndRecord(m);
   const profile = useProfile();
   const clock = useClock();
-  const times =
-    end.kind === 'finalShot' && profile.tieBreak.kind === 'finalShot'
-      ? { red: profile.tieBreak.timeSec, blue: profile.tieBreak.timeSec }
-      : m.setup.timeSec;
+  const display = useUI((s) => s.display);
+  const setDisplay = useUI((s) => s.setDisplay);
+  const times = endTimes(m, profile);
   const key = `${doc.id}:${m.currentEnd}`;
   useEffect(() => clock.ensure(key, times), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const auto = display.autoClock;
+  const target = M.clockTarget(m, doc.court, profile);
+  const status = !auto
+    ? null
+    : clock.paused
+      ? '一時停止中'
+      : target
+        ? `${sideLabel(target)}の持ち時間を計測中`
+        : m.phase === 'color' && m.pendingBallId
+          ? '投球を検出：記録待ち'
+          : m.phase === 'jack'
+            ? 'ジャックを検出：記録待ち'
+            : '計測なし（判定待ち）';
   return (
     <Section title={`持ち時間（${endLabel(end)}）`} right={<Btn small variant="ghost" onClick={() => clock.reset(times)}>リセット</Btn>}>
+      <div className="mb-2 flex flex-col gap-0.5 text-sm">
+        <label className="flex min-h-[36px] items-center gap-2">
+          <input type="checkbox" className="h-5 w-5" checked={display.autoRecord} onChange={(e) => setDisplay({ autoRecord: e.target.checked })} data-testid="auto-record" />
+          盤面に置いた投球を自動で判定・記録
+        </label>
+        <label className="flex min-h-[36px] items-center gap-2">
+          <input type="checkbox" className="h-5 w-5" checked={auto} onChange={(e) => setDisplay({ autoClock: e.target.checked })} data-testid="auto-clock" />
+          持ち時間を自動で進める
+        </label>
+      </div>
+      {status && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">
+          <span data-testid="clock-status">
+            {target && !clock.paused && <SideDot side={target} className="mr-1" />}
+            {status}
+          </span>
+          <Btn small variant="ghost" onClick={() => clock.setPaused(!clock.paused)} testId="clock-pause">
+            {clock.paused ? '再開' : '一時停止'}
+          </Btn>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {SIDES.map((s) => {
           const rem = clock.remainingNow(s);
@@ -48,16 +82,18 @@ function Clocks() {
                 <SideDot side={s} />
                 {sideLabel(s)}
               </div>
-              <div className={`text-3xl font-black tabular-nums ${rem <= 10 ? 'text-rose-600' : rem <= 60 ? 'text-amber-600' : ''}`} data-testid={`clock-${s}`}>
+              <div className={`text-3xl font-black tabular-nums ${rem <= 10 ? 'text-rose-600' : rem <= 60 ? 'text-amber-600' : ''}`} data-testid={`clock-${s}`} data-running={running ? 'true' : 'false'}>
                 {fmtClock(rem)}
               </div>
-              <div className="mt-1 flex justify-center gap-1">
-                {running ? (
-                  <Btn small onClick={() => clock.stop()}>停止</Btn>
-                ) : (
-                  <Btn small variant={s} onClick={() => clock.start(s)}>投球指示</Btn>
-                )}
-              </div>
+              {!auto && (
+                <div className="mt-1 flex justify-center gap-1">
+                  {running ? (
+                    <Btn small onClick={() => clock.stop()}>停止</Btn>
+                  ) : (
+                    <Btn small variant={s} onClick={() => clock.start(s)}>投球指示</Btn>
+                  )}
+                </div>
+              )}
               <div className="mt-1 flex justify-center gap-1">
                 <Btn small variant="ghost" onClick={() => clock.adjust(s, -10)}>−10秒</Btn>
                 <Btn small variant="ghost" onClick={() => clock.adjust(s, 10)}>＋10秒</Btn>
@@ -67,7 +103,10 @@ function Clocks() {
         })}
       </div>
       <Note>
-        各サイド独立のタイマーです。「投球指示」で開始、球が停止したら「停止」または投球記録で止まります。ジャック投球も持ち時間に含みます（{profile.timeRef}）。現実の試合の審判用公式時計ではありません。
+        {auto
+          ? '盤面から次に投げるサイド（ジャック担当、またはジャックに近くない側）を判定し、その時計を自動で動かします。球をコートに置くと止まり、記録すると次のサイドの時計が動きます。当たった球を置き直して判定が変わった場合は、経過時間ごと正しいサイドに付け替えます。'
+          : '各サイド独立のタイマーです。「投球指示」で開始、球が停止したら「停止」または投球記録で止まります。'}
+        ジャック投球も持ち時間に含みます（{profile.timeRef}）。現実の試合の審判用公式時計ではありません。
       </Note>
     </Section>
   );
@@ -90,7 +129,8 @@ function JackPhase() {
       ui.toast('ジャックツールでコートにジャックを置いてから記録してください。', 'warn');
       return;
     }
-    const el = useClock.getState().stop();
+    const c = useClock.getState();
+    const el = c.running ? c.stop() : c.lastElapsed;
     A.matchApply(result === 'valid' ? 'ジャック有効を記録' : 'ジャックファウルを記録', (mm) =>
       M.recordJack(mm, doc.court, profile, { result, box: t.box, note, durationSec: el }),
     );
@@ -137,8 +177,8 @@ function JackPhase() {
           <p className="text-[11px] text-slate-500">出典：{t.ruleRef}</p>
           {t.provisional && <Note kind="warn">ジャック投球ローテーションはこの規則版の本文に明示がないため「通常版からの初期提案／大会要確認」です。必要なら担当を手動で変更してください。</Note>}
           <ol className="my-2 list-decimal pl-5 text-sm">
-            <li>ツールで「白（ジャック）」を選び、止まった位置をタップ（ドラッグで調整）</li>
-            <li>結果を記録</li>
+            <li>ボックスのジャックをコートへドラッグ（またはツール「白（ジャック）」で止まった位置をタップ）</li>
+            <li>{ui.display.autoRecord ? '有効エリア内なら有効、無効エリア・エリア外ならファウルとして自動で記録します（Vラインにかかったときは選んで記録）' : '結果を記録'}</li>
           </ol>
           <div className="mb-2 flex gap-2">
             <Btn small onClick={() => ui.setTool('jack')} active={ui.tool === 'jack'}>白（ジャック）を置く</Btn>
@@ -214,11 +254,19 @@ function ColorPhase() {
           </div>
         ))}
       </div>
-      <ol className="mb-2 list-decimal pl-5 text-sm">
-        <li>{side ? `ツール「${sideLabel(side)}」` : '球の色'}を選び、止まった位置をタップ（ドラッグで調整）</li>
-        <li>当たって動いた球・ジャックもドラッグで置き直す</li>
-        <li>「この状態を1投として記録」</li>
-      </ol>
+      {ui.display.autoRecord ? (
+        <ol className="mb-2 list-decimal pl-5 text-sm">
+          <li>{side ? `${sideLabel(side)}の` : ''}ボックスの球をコートの止まった位置へドラッグ（またはツールで選んでタップ）→ 自動で1投として記録</li>
+          <li>当たって動いた球・ジャックをドラッグで置き直す（次の投球サイドは盤面から自動で判定し直します）</li>
+          <li>エリア外に出た球は次の投球の記録時に自動でアウトになります</li>
+        </ol>
+      ) : (
+        <ol className="mb-2 list-decimal pl-5 text-sm">
+          <li>{side ? `ツール「${sideLabel(side)}」` : '球の色'}を選び、止まった位置をタップ（ドラッグで調整）</li>
+          <li>当たって動いた球・ジャックもドラッグで置き直す</li>
+          <li>「この状態を1投として記録」</li>
+        </ol>
+      )}
       <div className="mb-2 flex flex-wrap gap-2">
         {SIDES.map((s) => (
           <Btn key={s} small variant={s} onClick={() => ui.setTool(s)} active={ui.tool === s} disabled={rem[s] <= 0}>

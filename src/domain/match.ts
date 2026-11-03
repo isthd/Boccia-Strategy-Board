@@ -666,3 +666,65 @@ export function decideWinnerManually(src: MatchState, side: Side, reason: string
   finish(m, side, `主催者・審判判断：${reason || '理由未記入'}`);
   return m;
 }
+
+// ---- 盤面からの自動判定（投球の検出・持ち時間の対象サイド） ----
+
+/**
+ * いま持ち時間を進めるべきサイド。盤面に「投げた球」（ジャック投球段階のジャック／未記録の仮置き球）が
+ * あれば、その投球は終わっているので null（時計を止める）。
+ */
+export function clockTarget(m: MatchState, court: CourtConfig, profile: RuleProfile): Side | null {
+  if (m.phase === 'jack') {
+    const jack = m.board.balls.find((b) => b.kind === 'jack');
+    if (!jack || jack.status !== 'available') return null;
+    return currentJackThrower(m, profile).side ?? null;
+  }
+  if (m.phase === 'color') {
+    if (m.pendingBallId) return null;
+    const d = decideNext(m, court, profile);
+    return d.endComplete ? null : d.side;
+  }
+  return null;
+}
+
+export interface AutoRecordOutcome {
+  match: MatchState;
+  /** 何を判定して記録したか（トースト表示用） */
+  message: string;
+  warnings: string[];
+}
+
+/**
+ * 盤面に置かれた投球を判定して記録する。判定できない（審判判断が必要な）場合は null。
+ * - ジャック：有効エリア内 → 有効、無効エリア／プレイングエリア外 → ファウル、Vラインにかかる → 手動
+ * - カラー球：プレイングエリア内に停止 → 有効、エリア外 → アウト。エリア外に弾き出されていた球もアウトにする
+ */
+export function autoRecordFromBoard(src: MatchState, court: CourtConfig, profile: RuleProfile, durationSec: number | null): AutoRecordOutcome | null {
+  if (src.phase === 'jack') {
+    const jack = src.board.balls.find((b) => b.kind === 'jack');
+    if (!jack || jack.status !== 'inPlay') return null;
+    const area = jackAreaStatus(jack, jack.radius, court);
+    if (area === 'touchingV') return null;
+    const t = currentJackThrower(src, profile);
+    if (t.manualRequired || t.box == null) return null;
+    const result = area === 'valid' ? 'valid' : 'foul';
+    const match = recordJack(src, court, profile, { result, box: t.box, note: '盤面から自動判定', durationSec });
+    return { match, message: result === 'valid' ? 'ジャック有効（自動判定）' : `ジャックファウル（自動判定：${area === 'invalidArea' ? '無効エリア' : 'エリア外'}）`, warnings: [] };
+  }
+  if (src.phase !== 'color' || !src.pendingBallId) return null;
+  const ball = src.board.balls.find((b) => b.id === src.pendingBallId);
+  if (!ball || ball.kind !== 'color' || !ball.side) return null;
+  const inArea = isCircleInPlayingArea(ball, ball.radius, court);
+  const knocked = autoOutCandidates(src, court, ball.id).map((b) => b.id);
+  const out = recordColorThrow(src, court, profile, {
+    side: ball.side,
+    box: ball.playerBox ?? null,
+    result: inArea ? 'valid' : 'out',
+    note: '盤面から自動判定',
+    durationSec,
+    markOutIds: knocked,
+    resetJack: false,
+  });
+  const extra = knocked.length ? `（エリア外の${knocked.length}球をアウト）` : '';
+  return { match: out.match, message: `${ballLabel(ball)}：${inArea ? '有効' : 'アウト'}${extra}`, warnings: out.warnings };
+}
