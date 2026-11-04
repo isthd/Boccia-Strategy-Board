@@ -568,7 +568,7 @@ export default function Court3D() {
   return (
     <div className="absolute inset-0" data-testid="court-3d">
       <div ref={wrapRef} className="absolute inset-0" style={{ cursor }} />
-      <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-black/25 p-1 backdrop-blur-sm" role="group" aria-label="3Dの視点">
+      <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-slate-900/40 p-1" role="group" aria-label="3Dの視点">
         {PRESETS.map((p) => (
           <button key={p.id} className="zoom-btn text-[11px] leading-tight" onClick={() => goPreset(p.id)} aria-label={p.title} title={p.title} data-testid={`view3d-${p.id}`}>
             {p.label}

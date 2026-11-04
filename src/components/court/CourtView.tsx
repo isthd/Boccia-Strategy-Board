@@ -305,7 +305,7 @@ function Court2D() {
       <svg
         ref={svgRef}
         className="absolute inset-0 h-full w-full select-none"
-        style={{ touchAction: 'none', cursor }}
+        style={{ touchAction: 'none', cursor, transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
         preserveAspectRatio="xMidYMid meet"
         onPointerDown={onPointerDown}
@@ -341,7 +341,7 @@ function Court2D() {
         </g>
       </svg>
 
-      <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-black/25 p-1 backdrop-blur-sm" role="group" aria-label="表示の拡大・縮小">
+      <div className="absolute bottom-2 right-2 flex flex-col items-center gap-1.5 rounded-full bg-slate-900/40 p-1" role="group" aria-label="表示の拡大・縮小">
         <button className="zoom-btn" onClick={() => zoomBtn(1.4)} aria-label="拡大" title="拡大">＋</button>
         <button className="zoom-btn" onClick={() => zoomBtn(1 / 1.4)} aria-label="縮小" title="縮小">－</button>
         <button className="zoom-btn text-[11px] leading-tight" onClick={focusJack} aria-label="ジャック周辺を拡大" title="ジャック周辺を拡大">J<br />周辺</button>
